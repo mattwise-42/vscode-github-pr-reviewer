@@ -1,4 +1,4 @@
-# GitHub Reviewer
+# GitHub PR Reviewer - VS Code Extension
 
 ADO-style unresolved PR review thread sidebar for VS Code. See every open review comment, navigate to the code, reply, and resolve — without leaving your editor.
 

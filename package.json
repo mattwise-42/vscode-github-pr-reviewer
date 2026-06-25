@@ -1,6 +1,6 @@
 {
   "name": "github-reviewer",
-  "displayName": "GitHub Reviewer",
+  "displayName": "GitHub PR Reviewer",
   "description": "ADO-style unresolved PR review thread sidebar for GitHub",
   "version": "0.0.1",
   "publisher": "mattwise-42",
@@ -16,7 +16,7 @@
       "activitybar": [
         {
           "id": "github-reviewer",
-          "title": "GitHub Reviewer",
+          "title": "GitHub PR Reviewer",
           "icon": "resources/icon.svg"
         }
       ]
@@ -35,58 +35,58 @@
         "command": "githubReviewer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.showInTreeView",
         "title": "Show in GitHub Reviewer",
         "icon": "$(list-tree)",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.nextThread",
         "title": "Next Unresolved Thread",
         "icon": "$(arrow-down)",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.prevThread",
         "title": "Previous Unresolved Thread",
         "icon": "$(arrow-up)",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.resolveThread",
         "title": "Resolve",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.replyToThread",
         "title": "Reply to Thread",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.resolveThreadNode",
         "title": "Resolve",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.showResolved",
         "title": "Show Resolved Threads",
         "icon": "$(eye)",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.hideResolved",
         "title": "Hide Resolved Threads",
         "icon": "$(eye-closed)",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.replyToThreadNode",
         "title": "Reply to Thread",
         "icon": "$(reply)",
-        "category": "GitHub Reviewer"
+        "category": "GitHub PR Reviewer"
       }
     ],
     "menus": {
