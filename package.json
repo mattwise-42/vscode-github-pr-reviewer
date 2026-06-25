@@ -1,0 +1,170 @@
+{
+  "name": "github-reviewer",
+  "displayName": "GitHub Reviewer",
+  "description": "ADO-style unresolved PR review thread sidebar for GitHub",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "github-reviewer",
+          "title": "GitHub Reviewer",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "github-reviewer": [
+        {
+          "id": "githubReviewer.reviewView",
+          "name": "Pull Requests",
+          "icon": "$(git-pull-request)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "githubReviewer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.showInTreeView",
+        "title": "Show in GitHub Reviewer",
+        "icon": "$(list-tree)",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.nextThread",
+        "title": "Next Unresolved Thread",
+        "icon": "$(arrow-down)",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.prevThread",
+        "title": "Previous Unresolved Thread",
+        "icon": "$(arrow-up)",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.resolveThread",
+        "title": "Resolve",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.replyToThread",
+        "title": "Reply to Thread",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.resolveThreadNode",
+        "title": "Resolve",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.showResolved",
+        "title": "Show Resolved Threads",
+        "icon": "$(eye)",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.hideResolved",
+        "title": "Hide Resolved Threads",
+        "icon": "$(eye-closed)",
+        "category": "GitHub Reviewer"
+      },
+      {
+        "command": "githubReviewer.replyToThreadNode",
+        "title": "Reply to Thread",
+        "icon": "$(reply)",
+        "category": "GitHub Reviewer"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "githubReviewer.showInTreeView",
+          "when": "!explorerResourceIsFolder",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "githubReviewer.showInTreeView",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "githubReviewer.showResolved",
+          "when": "view == githubReviewer.reviewView && !githubReviewer.showResolved",
+          "group": "navigation@0"
+        },
+        {
+          "command": "githubReviewer.hideResolved",
+          "when": "view == githubReviewer.reviewView && githubReviewer.showResolved",
+          "group": "navigation@0"
+        },
+        {
+          "command": "githubReviewer.prevThread",
+          "when": "view == githubReviewer.reviewView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "githubReviewer.nextThread",
+          "when": "view == githubReviewer.reviewView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "githubReviewer.refresh",
+          "when": "view == githubReviewer.reviewView",
+          "group": "navigation@3"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "githubReviewer.resolveThread",
+          "when": "commentController == github-reviewer && commentThread == unresolved",
+          "group": "inline"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "githubReviewer.replyToThread",
+          "when": "commentController == github-reviewer",
+          "group": "inline"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "githubReviewer.resolveThreadNode",
+          "when": "view == githubReviewer.reviewView && viewItem == thread-unresolved",
+          "group": "inline@1"
+        },
+        {
+          "command": "githubReviewer.replyToThreadNode",
+          "when": "view == githubReviewer.reviewView && viewItem =~ /^thread-/",
+          "group": "inline@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npm run build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  }
+}
