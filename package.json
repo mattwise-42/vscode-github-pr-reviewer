@@ -3,7 +3,10 @@
   "displayName": "GitHub Reviewer",
   "description": "ADO-style unresolved PR review thread sidebar for GitHub",
   "version": "0.0.1",
-  "publisher": "local",
+  "publisher": "mattwise-42",
+  "repository": {
+    "url": "https://github.com/mattwise-42/vscode-github-pr-reviewer"
+  },
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
   "activationEvents": ["onStartupFinished"],
