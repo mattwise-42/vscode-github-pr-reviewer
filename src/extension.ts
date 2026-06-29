@@ -3,17 +3,22 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import {
   createReviewComment,
+  fetchFileContent,
   fetchOpenPRs,
   fetchPRFiles,
   fetchReviewThreads,
+  getReviewThreadAnchor,
+  getReviewThreadRefCandidates,
   GitHubRepo,
   parseGitHubRemote,
   PRSummary,
   replyToThread,
   resolveThread,
-  ReviewThread,
 } from './github';
 import {
+  CommentNode,
+  FileNode,
+  FolderNode,
   PRNode,
   ReviewTreeNode,
   ReviewTreeProvider,
@@ -57,6 +62,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let currentRepo: GitHubRepo | null = null;
   let currentBranch: string | null = null;
   let navIndex = 0;
+  let selectedPRNode: PRNode | undefined;
 
   const reviewProvider = new ReviewTreeProvider();
   const treeView = vscode.window.createTreeView<ReviewTreeNode>('githubReviewer.reviewView', {
@@ -64,6 +70,136 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCollapseAll: true,
   });
   const commentsCtrl = new CommentsController();
+  const remoteFileContents = new Map<string, string>();
+
+  const remoteFileProvider = vscode.workspace.registerTextDocumentContentProvider(
+    'github-reviewer-remote',
+    {
+      provideTextDocumentContent(uri: vscode.Uri): string {
+        return remoteFileContents.get(uri.toString()) ?? '';
+      },
+    },
+  );
+
+  function getOriginalCommentUrl(target: ThreadNode | CommentNode | vscode.CommentThread): string | undefined {
+    if (target instanceof ThreadNode) {
+      return target.thread.comments[0]?.url;
+    }
+    if (target instanceof CommentNode) {
+      return target.comment.url;
+    }
+    return commentsCtrl.getThreadUrl(target);
+  }
+
+  function workspaceRootPath(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  function workspaceFileUri(relPath: string): vscode.Uri | undefined {
+    const root = workspaceRootPath();
+    return root ? vscode.Uri.file(`${root}/${relPath}`) : undefined;
+  }
+
+  function remoteFileUri(relPath: string, ref: string): vscode.Uri {
+    return vscode.Uri.from({
+      scheme: 'github-reviewer-remote',
+      path: `/${relPath}`,
+      query: `ref=${encodeURIComponent(ref)}`,
+    });
+  }
+
+  async function openRemoteFile(
+    relPath: string,
+    candidates: Array<{ ref: string; startLine: number | null; endLine: number | null }>,
+  ): Promise<vscode.TextEditor | undefined> {
+    if (!session || !currentRepo) {
+      return undefined;
+    }
+
+    for (const candidate of candidates) {
+      const content = await fetchFileContent(session.accessToken, currentRepo, candidate.ref, relPath);
+      if (content == null) {
+        continue;
+      }
+
+      const uri = remoteFileUri(relPath, candidate.ref);
+      remoteFileContents.set(uri.toString(), content);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const startLine = candidate.startLine != null ? Math.max(0, candidate.startLine - 1) : 0;
+      const endLine = candidate.endLine != null ? Math.max(0, candidate.endLine - 1) : startLine;
+      const editor = await vscode.window.showTextDocument(doc, {
+        selection: new vscode.Range(startLine, 0, endLine, 0),
+        preserveFocus: false,
+      });
+      editor.revealRange(
+        new vscode.Range(startLine, 0, endLine, 0),
+        vscode.TextEditorRevealType.InCenter,
+      );
+      return editor;
+    }
+
+    return undefined;
+  }
+
+  async function openWorkspaceFile(
+    relPath: string,
+    options: {
+      anchor?: { startLine: number | null; endLine: number | null };
+      preserveFocus?: boolean;
+      missingMessage: string;
+      fallbackUrl?: string;
+      remoteCandidates?: Array<{ ref: string; startLine: number | null; endLine: number | null }>;
+    },
+  ): Promise<vscode.TextEditor | undefined> {
+    const fileUri = workspaceFileUri(relPath);
+    if (!fileUri) {
+      return undefined;
+    }
+
+    try {
+      await vscode.workspace.fs.stat(fileUri);
+    } catch {
+      if (options.remoteCandidates?.length) {
+        const remoteEditor = await openRemoteFile(relPath, options.remoteCandidates);
+        if (remoteEditor) {
+          return remoteEditor;
+        }
+      }
+
+      const action = options.fallbackUrl
+        ? await vscode.window.showWarningMessage(options.missingMessage, 'Open on GitHub')
+        : undefined;
+      if (action === 'Open on GitHub' && options.fallbackUrl) {
+        await vscode.env.openExternal(vscode.Uri.parse(options.fallbackUrl));
+      }
+      return undefined;
+    }
+
+    const startLine = options.anchor?.startLine != null ? Math.max(0, options.anchor.startLine - 1) : 0;
+    const endLine = options.anchor?.endLine != null ? Math.max(0, options.anchor.endLine - 1) : startLine;
+    const doc = await vscode.workspace.openTextDocument(fileUri);
+    const editor = await vscode.window.showTextDocument(doc, {
+      selection: new vscode.Range(startLine, 0, endLine, 0),
+      preserveFocus: options.preserveFocus,
+    });
+    editor.revealRange(
+      new vscode.Range(startLine, 0, endLine, 0),
+      vscode.TextEditorRevealType.InCenter,
+    );
+    return editor;
+  }
+
+  async function syncComments(): Promise<void> {
+    const loadedNodes = reviewProvider.prNodes.filter((node) => node.loaded);
+    const threads = loadedNodes.flatMap((node) =>
+      node.fileNodes.flatMap((fileNode) => fileNode.threads),
+    ).filter((thread) => reviewProvider.showResolved || !thread.isResolved);
+    const files = [...new Set(loadedNodes.flatMap((node) =>
+      node.fileNodes.map((fileNode) => fileNode.file.filename),
+    ))];
+    commentsCtrl.setChangedFiles(files);
+    await commentsCtrl.update(threads);
+  }
 
   function currentBranchNode(): PRNode | undefined {
     return currentBranch
@@ -71,12 +207,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       : undefined;
   }
 
-  function syncComments(): void {
-    const node = currentBranchNode();
-    const threads = node?.fileNodes.flatMap((fileNode) => fileNode.threads) ?? [];
-    const files = node?.fileNodes.map((fileNode) => fileNode.file.filename) ?? [];
-    commentsCtrl.update(threads);
-    commentsCtrl.setChangedFiles(files);
+  function updateSelectedPRContext(): void {
+    const target = selectedPRNode ?? currentBranchNode();
+    void vscode.commands.executeCommand('setContext', 'githubReviewer.hasSelectedPR', Boolean(target));
+    void vscode.commands.executeCommand('setContext', 'githubReviewer.selectedPRExpanded', Boolean(target?.expanded));
+  }
+
+  function getTargetPRNode(node?: PRNode): PRNode | undefined {
+    return node ?? selectedPRNode ?? currentBranchNode();
+  }
+
+  async function reloadPRNode(prNode: PRNode): Promise<void> {
+    prNode.loaded = false;
+    prNode.fileNodes = [];
+    await reviewProvider.loadPR(prNode);
+    reviewProvider.refresh(prNode);
   }
 
   reviewProvider.setLoader(async (pr: PRSummary) => {
@@ -93,18 +238,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const reviewTreeSubscription = reviewProvider.onDidChangeTreeData(() => {
     reviewProvider.setBadge(treeView);
-    syncComments();
+    updateSelectedPRContext();
+    void syncComments();
   });
 
-  async function navigateToThread(thread: ReviewThread): Promise<void> {
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    const fileUri = vscode.Uri.file(`${workspaceRoot}/${thread.path}`);
-    const line = thread.line != null ? thread.line - 1 : 0;
+  const treeSelectionSubscription = treeView.onDidChangeSelection((event) => {
+    const selected = event.selection[0];
+    selectedPRNode = selected instanceof PRNode
+      ? selected
+      : (selected instanceof FolderNode
+        ? selected.prNode
+        : (selected instanceof FileNode
+          ? selected.prNode
+          : (selected instanceof ThreadNode
+            ? selected.fileNode.prNode
+            : (selected instanceof CommentNode ? selected.threadNode.fileNode.prNode : undefined))));
+    updateSelectedPRContext();
+  });
+
+  async function navigateToThread(node: ThreadNode): Promise<void> {
+    await syncComments();
     try {
-      const doc = await vscode.workspace.openTextDocument(fileUri);
-      await vscode.window.showTextDocument(doc, {
-        selection: new vscode.Range(line, 0, line, 0),
+      const editor = await openWorkspaceFile(node.thread.path, {
+        anchor: getReviewThreadAnchor(node.thread),
+        preserveFocus: false,
+        missingMessage: `${node.thread.path} was not found locally. This thread may be on a deleted or renamed file.`,
+        fallbackUrl: node.thread.comments[0]?.url,
+        remoteCandidates: getReviewThreadRefCandidates(node.thread, node.fileNode.prNode.pr),
       });
+      if (editor) {
+        commentsCtrl.showThread(node.thread.id, editor.document.uri);
+      }
     } catch {}
   }
 
@@ -117,18 +281,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       currentBranch = null;
       navIndex = 0;
       reviewProvider.updatePRs([]);
-      commentsCtrl.update([]);
+      await commentsCtrl.update([]);
       commentsCtrl.setChangedFiles([]);
       return;
     }
 
-    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const cwd = workspaceRootPath();
     if (!cwd) {
       currentRepo = null;
       currentBranch = null;
       navIndex = 0;
       reviewProvider.updatePRs([]);
-      commentsCtrl.update([]);
+      await commentsCtrl.update([]);
       commentsCtrl.setChangedFiles([]);
       return;
     }
@@ -152,7 +316,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       currentBranch = null;
       navIndex = 0;
       reviewProvider.updatePRs([]);
-      commentsCtrl.update([]);
+      await commentsCtrl.update([]);
       commentsCtrl.setChangedFiles([]);
       return;
     }
@@ -171,14 +335,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     navIndex = 0;
     reviewProvider.setBadge(treeView);
-    syncComments();
+    await syncComments();
 
     if (matchingPR) {
       try {
+        await reviewProvider.loadPR(matchingPR);
         await treeView.reveal(matchingPR, { expand: true, focus: false, select: false });
       } catch {}
       reviewProvider.setBadge(treeView);
-      syncComments();
+      await syncComments();
     }
   }
 
@@ -199,6 +364,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   void vscode.commands.executeCommand('setContext', 'githubReviewer.showResolved', false);
+  void vscode.commands.executeCommand('setContext', 'githubReviewer.hasSelectedPR', false);
+  void vscode.commands.executeCommand('setContext', 'githubReviewer.selectedPRExpanded', false);
 
   const showResolvedCommand = vscode.commands.registerCommand('githubReviewer.showResolved', () => {
     reviewProvider.showResolved = true;
@@ -215,16 +382,84 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const openThreadCommand = vscode.commands.registerCommand(
     'githubReviewer.openThread',
     async (node: ThreadNode) => {
-      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      const fileUri = vscode.Uri.file(`${workspaceRoot}/${node.thread.path}`);
-      const line = node.thread.line != null ? node.thread.line - 1 : 0;
       try {
-        const doc = await vscode.workspace.openTextDocument(fileUri);
-        await vscode.window.showTextDocument(doc, {
-          selection: new vscode.Range(line, 0, line, 0),
+        await syncComments();
+        const editor = await openWorkspaceFile(node.thread.path, {
+          anchor: getReviewThreadAnchor(node.thread),
           preserveFocus: false,
+          missingMessage: `${node.thread.path} was not found locally. This thread may be on a deleted or renamed file.`,
+          fallbackUrl: node.thread.comments[0]?.url,
+          remoteCandidates: getReviewThreadRefCandidates(node.thread, node.fileNode.prNode.pr),
         });
-        commentsCtrl.expandThread(node.thread.id);
+        if (editor) {
+          commentsCtrl.showThread(node.thread.id, editor.document.uri);
+        }
+      } catch {}
+    },
+  );
+
+  const openFileCommand = vscode.commands.registerCommand(
+    'githubReviewer.openFile',
+    async (node: FileNode) => {
+      try {
+        await openWorkspaceFile(node.file.filename, {
+          preserveFocus: false,
+          missingMessage: `${node.file.filename} was not found locally. This file may have been deleted or renamed in the PR.`,
+          remoteCandidates: [
+            { ref: node.prNode.pr.headRefName, startLine: null, endLine: null },
+            { ref: node.prNode.pr.baseRefName, startLine: null, endLine: null },
+          ],
+        });
+      } catch {}
+    },
+  );
+
+  const openOriginalCommentCommand = vscode.commands.registerCommand(
+    'githubReviewer.openOriginalComment',
+    async (target: ThreadNode | CommentNode | vscode.CommentThread) => {
+      const url = getOriginalCommentUrl(target);
+      if (!url) {
+        void vscode.window.showInformationMessage('No GitHub comment URL is available for this thread.');
+        return;
+      }
+
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+    },
+  );
+
+  const expandPRCommand = vscode.commands.registerCommand(
+    'githubReviewer.expandPullRequest',
+    async (node?: PRNode) => {
+      const target = getTargetPRNode(node);
+      if (!target) {
+        return;
+      }
+
+      try {
+        await reviewProvider.loadPR(target);
+        reviewProvider.setPRExpanded(target, true);
+        selectedPRNode = target;
+        updateSelectedPRContext();
+        reviewProvider.refresh(target);
+        await treeView.reveal(target, { select: true, focus: true, expand: 99 });
+      } catch {}
+    },
+  );
+
+  const collapsePRCommand = vscode.commands.registerCommand(
+    'githubReviewer.collapsePullRequest',
+    async (node?: PRNode) => {
+      const target = getTargetPRNode(node);
+      if (!target) {
+        return;
+      }
+
+      reviewProvider.setPRExpanded(target, false);
+      selectedPRNode = target;
+      updateSelectedPRContext();
+      reviewProvider.refresh(target);
+      try {
+        await treeView.reveal(target, { select: true, focus: true });
       } catch {}
     },
   );
@@ -262,8 +497,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
 
         await resolveThread(session.accessToken, threadId);
-        await loadPRs({ forceReloadCurrentPR: true });
-      } catch {}
+        const prNode = reviewProvider.markThreadResolved(threadId);
+        reviewProvider.refresh(prNode);
+        reviewProvider.setBadge(treeView);
+        await syncComments();
+
+        if (prNode) {
+          reloadPRNode(prNode).catch(() => {});
+        } else {
+          loadPRs({ forceReloadCurrentPR: true }).catch(() => {});
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to resolve GitHub review thread.';
+        void vscode.window.showErrorMessage(message);
+      }
     },
   );
 
@@ -308,15 +555,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
 
         await resolveThread(session.accessToken, node.thread.id);
-        const threadIndex = node.fileNode.threads.indexOf(node.thread);
-        if (threadIndex >= 0) {
-          node.fileNode.threads.splice(threadIndex, 1);
-        }
-        reviewProvider.refresh(node.fileNode);
+        reviewProvider.markThreadResolved(node.thread.id);
+        reviewProvider.refresh(node.fileNode.prNode);
         reviewProvider.setBadge(treeView);
-        syncComments();
-        loadPRs({ forceReloadCurrentPR: true }).catch(() => {});
-      } catch {}
+        await syncComments();
+
+        reloadPRNode(node.fileNode.prNode).catch(() => {});
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to resolve GitHub review thread.';
+        void vscode.window.showErrorMessage(message);
+      }
     },
   );
 
@@ -350,7 +598,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const target = nodes[navIndex % nodes.length];
     navIndex = (navIndex + 1) % nodes.length;
-    await navigateToThread(target.thread);
+    await navigateToThread(target);
   });
 
   const prevThreadCommand = vscode.commands.registerCommand('githubReviewer.prevThread', async () => {
@@ -360,17 +608,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     navIndex = (navIndex - 1 + nodes.length) % nodes.length;
-    await navigateToThread(nodes[navIndex].thread);
+    await navigateToThread(nodes[navIndex]);
   });
 
   context.subscriptions.push(
     treeView,
     commentsCtrl,
+    remoteFileProvider,
     reviewTreeSubscription,
+    treeSelectionSubscription,
     refreshCommand,
     showResolvedCommand,
     hideResolvedCommand,
     openThreadCommand,
+    openFileCommand,
+    openOriginalCommentCommand,
+    expandPRCommand,
+    collapsePRCommand,
     showInTreeViewCommand,
     resolveCommand,
     replyCommand,

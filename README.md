@@ -10,7 +10,7 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 - **Reply** from the inline thread's built-in reply box
 - **Resolve** with the ✓ button on each thread title
 - **Badge** on the sidebar icon shows the unresolved thread count
-- **Show in GitHub Reviewer** jumps from the Explorer or editor tab to the current file in the review tree
+- **Show in GitHub PR Reviewer** jumps from the Explorer or editor tab to the current file in the review tree
 - Auto-detects the PR for your current branch; re-detects when you switch branches
 
 ## Requirements
@@ -27,10 +27,10 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 cd /path/to/GitHubReviewer
 npm install
 npm run package
-# → produces github-reviewer-0.0.1.vsix
+# → produces github-pr-reviewer-0.0.1.vsix
 
 # 2. Install it in VS Code
-code --install-extension github-reviewer-0.0.1.vsix
+code --install-extension github-pr-reviewer-0.0.1.vsix
 ```
 
 Or install via the VS Code UI: **Extensions → … → Install from VSIX…**

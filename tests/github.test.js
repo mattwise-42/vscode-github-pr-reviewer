@@ -94,6 +94,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
           title: 'Thread sidebar',
           draft: false,
           head: { ref: 'feature/thread-sidebar' },
+          base: { ref: 'main' },
         },
         {
           number: 43,
@@ -101,6 +102,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
           title: 'Docs polish',
           draft: true,
           head: { ref: 'docs/polish' },
+          base: { ref: 'main' },
         },
       ],
     });
@@ -118,6 +120,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
         nodeId: 'PR_node_42',
         title: 'Thread sidebar',
         headRefName: 'feature/thread-sidebar',
+        baseRefName: 'main',
         isDraft: false,
       },
       {
@@ -125,9 +128,47 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
         nodeId: 'PR_node_43',
         title: 'Docs polish',
         headRefName: 'docs/polish',
+        baseRefName: 'main',
         isDraft: true,
       },
     ]);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('fetchFileContent returns decoded file contents and null for missing files', async () => {
+  const { fetchFileContent } = loadGithubModule();
+  let call = 0;
+  const restoreFetch = mockFetch(async (url, init) => {
+    call += 1;
+    assert.equal(init?.headers?.Authorization, 'Bearer token-123');
+    if (call === 1) {
+      assert.equal(
+        url,
+        'https://api.github.com/repos/octo/reviewer/contents/src/github.ts?ref=feature%2Fthread-sidebar',
+      );
+      return createResponse({
+        json: {
+          type: 'file',
+          encoding: 'base64',
+          content: 'Y29uc29sZS5sb2coImhpIik7\n',
+        },
+      });
+    }
+
+    return createResponse({ ok: false, status: 404, json: {} });
+  });
+
+  try {
+    assert.equal(
+      await fetchFileContent?.('token-123', { owner: 'octo', repo: 'reviewer' }, 'feature/thread-sidebar', 'src/github.ts'),
+      'console.log("hi");',
+    );
+    assert.equal(
+      await fetchFileContent?.('token-123', { owner: 'octo', repo: 'reviewer' }, 'main', 'missing.ts'),
+      null,
+    );
   } finally {
     restoreFetch();
   }
@@ -173,6 +214,12 @@ test('fetchReviewThreads returns resolved and unresolved threads and normalizes 
                           author: null,
                           createdAt: '2026-06-25T10:00:00Z',
                           url: 'https://github.com/octo/reviewer/pull/42#discussion_r1',
+                          line: null,
+                          startLine: null,
+                          originalLine: 27,
+                          originalStartLine: 20,
+                          commit: { oid: 'commit-sha-2' },
+                          originalCommit: { oid: 'commit-sha-1' },
                         },
                       ],
                     },
@@ -223,6 +270,12 @@ test('fetchReviewThreads returns resolved and unresolved threads and normalizes 
             author: { login: 'ghost', avatarUrl: '' },
             createdAt: '2026-06-25T10:00:00Z',
             url: 'https://github.com/octo/reviewer/pull/42#discussion_r1',
+            line: null,
+            startLine: null,
+            originalLine: 27,
+            originalStartLine: 20,
+            commitOid: 'commit-sha-2',
+            originalCommitOid: 'commit-sha-1',
           },
         ],
       },
@@ -242,6 +295,55 @@ test('fetchReviewThreads returns resolved and unresolved threads and normalizes 
   } finally {
     restoreFetch();
   }
+});
+
+test('review thread anchors and ref candidates prefer original commit context when available', () => {
+  const { getReviewThreadAnchor, getReviewThreadRefCandidates } = loadGithubModule();
+
+  const thread = {
+    id: 'thread-1',
+    path: 'src/github.ts',
+    line: null,
+    startLine: null,
+    diffSide: 'RIGHT',
+    isResolved: false,
+    isOutdated: true,
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [
+      {
+        id: 'comment-1',
+        body: 'Needs a test',
+        author: { login: 'ghost', avatarUrl: '' },
+        createdAt: '2026-06-25T10:00:00Z',
+        url: 'https://github.com/octo/reviewer/pull/42#discussion_r1',
+        line: 31,
+        startLine: 28,
+        originalLine: 24,
+        originalStartLine: 20,
+        commitOid: 'commit-sha-2',
+        originalCommitOid: 'commit-sha-1',
+      },
+    ],
+  };
+
+  assert.deepEqual(getReviewThreadAnchor(thread), {
+    startLine: 28,
+    endLine: 31,
+  });
+  assert.deepEqual(getReviewThreadAnchor(thread, { preferOriginal: true }), {
+    startLine: 20,
+    endLine: 24,
+  });
+  assert.deepEqual(getReviewThreadRefCandidates(thread, {
+    headRefName: 'feature/thread-sidebar',
+    baseRefName: 'main',
+  }), [
+    { ref: 'commit-sha-1', startLine: 20, endLine: 24 },
+    { ref: 'commit-sha-2', startLine: 28, endLine: 31 },
+    { ref: 'feature/thread-sidebar', startLine: 28, endLine: 31 },
+    { ref: 'main', startLine: 20, endLine: 24 },
+  ]);
 });
 
 test('resolveThread sends the GraphQL mutation and throws the first GraphQL error', async () => {
@@ -321,6 +423,12 @@ test('replyToThread posts a thread reply and returns the created comment', async
         avatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4',
       },
       url: 'https://github.com/octo/reviewer/pull/42#discussion_r2',
+      line: null,
+      startLine: null,
+      originalLine: null,
+      originalStartLine: null,
+      commitOid: null,
+      originalCommitOid: null,
     });
   } finally {
     restoreFetch();

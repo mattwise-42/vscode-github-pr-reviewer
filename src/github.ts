@@ -17,6 +17,21 @@ export interface ReviewComment {
   author: { login: string; avatarUrl: string };
   createdAt: string;
   url: string;
+  line?: number | null;
+  startLine?: number | null;
+  originalLine?: number | null;
+  originalStartLine?: number | null;
+  commitOid?: string | null;
+  originalCommitOid?: string | null;
+}
+
+export interface ReviewThreadAnchor {
+  startLine: number | null;
+  endLine: number | null;
+}
+
+export interface ReviewThreadRefCandidate extends ReviewThreadAnchor {
+  ref: string;
 }
 
 export interface PullRequestInfo {
@@ -30,6 +45,7 @@ export interface PRSummary {
   nodeId: string;
   title: string;
   headRefName: string;
+  baseRefName: string;
   isDraft: boolean;
 }
 
@@ -57,13 +73,19 @@ query GetPRReviewThreads($owner: String!, $repo: String!, $prNumber: Int!) {
           diffSide
           viewerCanResolve
           viewerCanReply
-          comments(first: 50) {
+          comments(first: 100) {
             nodes {
               id
               body
               author { login avatarUrl }
               createdAt
               url
+              line
+              startLine
+              originalLine
+              originalStartLine
+              commit { oid }
+              originalCommit { oid }
             }
           }
         }
@@ -126,6 +148,9 @@ interface RestOpenPullRequest extends RestPullRequest {
   head: {
     ref: string;
   };
+  base: {
+    ref: string;
+  };
 }
 
 interface GraphQLAuthor {
@@ -139,6 +164,16 @@ interface GraphQLCommentNode {
   author: GraphQLAuthor | null;
   createdAt: string;
   url: string;
+  line?: number | null;
+  startLine?: number | null;
+  originalLine?: number | null;
+  originalStartLine?: number | null;
+  commit?: {
+    oid: string;
+  } | null;
+  originalCommit?: {
+    oid: string;
+  } | null;
 }
 
 interface GraphQLThreadNode {
@@ -216,7 +251,123 @@ function mapComment(comment: GraphQLCommentNode): ReviewComment {
     author: normalizeAuthor(comment.author),
     createdAt: comment.createdAt,
     url: comment.url,
+    line: comment.line ?? null,
+    startLine: comment.startLine ?? null,
+    originalLine: comment.originalLine ?? null,
+    originalStartLine: comment.originalStartLine ?? null,
+    commitOid: comment.commit?.oid ?? null,
+    originalCommitOid: comment.originalCommit?.oid ?? null,
   };
+}
+
+function firstNonNull(...values: Array<number | null | undefined>): number | null {
+  for (const value of values) {
+    if (value != null) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function getAnchoredComment(thread: ReviewThread): ReviewComment | undefined {
+  return thread.comments.find((comment) =>
+    comment.line != null
+    || comment.startLine != null
+    || comment.originalLine != null
+    || comment.originalStartLine != null,
+  ) ?? thread.comments[0];
+}
+
+function normalizeAnchor(anchor: ReviewThreadAnchor): ReviewThreadAnchor {
+  const endLine = anchor.endLine;
+  const startLine = anchor.startLine ?? endLine;
+  if (startLine == null || endLine == null) {
+    return { startLine, endLine };
+  }
+
+  return startLine <= endLine
+    ? { startLine, endLine }
+    : { startLine: endLine, endLine: startLine };
+}
+
+export function getReviewThreadAnchor(
+  thread: ReviewThread,
+  options: { preferOriginal?: boolean } = {},
+): ReviewThreadAnchor {
+  const anchoredComment = getAnchoredComment(thread);
+  const preferOriginal = options.preferOriginal ?? false;
+
+  if (preferOriginal) {
+    return normalizeAnchor({
+      startLine: firstNonNull(
+        anchoredComment?.originalStartLine,
+        anchoredComment?.startLine,
+        thread.startLine,
+        anchoredComment?.originalLine,
+        anchoredComment?.line,
+        thread.line,
+      ),
+      endLine: firstNonNull(
+        anchoredComment?.originalLine,
+        anchoredComment?.line,
+        thread.line,
+        anchoredComment?.originalStartLine,
+        anchoredComment?.startLine,
+        thread.startLine,
+      ),
+    });
+  }
+
+  return normalizeAnchor({
+    startLine: firstNonNull(
+      thread.startLine,
+      anchoredComment?.startLine,
+      anchoredComment?.originalStartLine,
+      thread.line,
+      anchoredComment?.line,
+      anchoredComment?.originalLine,
+    ),
+    endLine: firstNonNull(
+      thread.line,
+      anchoredComment?.line,
+      anchoredComment?.originalLine,
+      thread.startLine,
+      anchoredComment?.startLine,
+      anchoredComment?.originalStartLine,
+    ),
+  });
+}
+
+export function getReviewThreadLine(thread: ReviewThread): number | null {
+  return getReviewThreadAnchor(thread).endLine;
+}
+
+export function getReviewThreadRefCandidates(
+  thread: ReviewThread,
+  refs: { headRefName: string; baseRefName: string },
+): ReviewThreadRefCandidate[] {
+  const anchoredComment = getAnchoredComment(thread);
+  const currentAnchor = getReviewThreadAnchor(thread);
+  const originalAnchor = getReviewThreadAnchor(thread, { preferOriginal: true });
+  const candidates: ReviewThreadRefCandidate[] = [];
+  const seen = new Set<string>();
+
+  function push(ref: string | null | undefined, anchor: ReviewThreadAnchor): void {
+    if (!ref || seen.has(ref)) {
+      return;
+    }
+
+    seen.add(ref);
+    candidates.push({ ref, ...anchor });
+  }
+
+  push(anchoredComment?.originalCommitOid, originalAnchor);
+  push(anchoredComment?.commitOid, currentAnchor);
+  push(refs.headRefName, currentAnchor);
+  push(refs.baseRefName, originalAnchor);
+
+  return candidates;
 }
 
 function mapThread(thread: GraphQLThreadNode): ReviewThread {
@@ -440,6 +591,38 @@ export async function fetchOpenPRs(token: string, repo: GitHubRepo): Promise<PRS
     nodeId: pr.node_id,
     title: pr.title,
     headRefName: pr.head.ref,
+    baseRefName: pr.base.ref,
     isDraft: pr.draft,
   }));
+}
+
+export async function fetchFileContent(
+  token: string,
+  repo: GitHubRepo,
+  ref: string,
+  path: string,
+): Promise<string | null> {
+  const response = await fetch(
+    `${GITHUB_REST_API_URL}/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/contents/${path}?ref=${encodeURIComponent(ref)}`,
+    { headers: createHeaders(token) },
+  );
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub API error: ${response.status}`);
+  }
+
+  const data = await response.json() as { content?: string; encoding?: string; type?: string };
+  if (data.type !== 'file' || !data.content) {
+    return null;
+  }
+
+  if (data.encoding !== 'base64') {
+    throw new Error('GitHub API error: unsupported file encoding');
+  }
+
+  return Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
 }

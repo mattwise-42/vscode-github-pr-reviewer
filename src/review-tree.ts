@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
-import type { PRFile, PRSummary, ReviewThread } from './github';
+import { getReviewThreadLine, type PRFile, type PRSummary, type ReviewComment, type ReviewThread } from './github';
 
-export type ReviewTreeNode = PRNode | FolderNode | FileNode | ThreadNode;
+export type ReviewTreeNode = PRNode | FolderNode | FileNode | ThreadNode | CommentNode;
 
 export class PRNode {
   loaded = false;
+  loading: Promise<void> | null = null;
+  expanded = false;
   fileNodes: FileNode[] = [];
   treeNodes: (FolderNode | FileNode)[] = [];
   visibleFileNodes: Map<string, FileNode> = new Map();
@@ -39,6 +41,14 @@ export class ThreadNode {
   ) {}
 }
 
+export class CommentNode {
+  constructor(
+    public readonly comment: ReviewComment,
+    public readonly threadNode: ThreadNode,
+    public readonly index: number,
+  ) {}
+}
+
 export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNode> {
   private _onDidChangeTreeData = new vscode.EventEmitter<ReviewTreeNode | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -61,6 +71,8 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
       const existing = existingByNumber.get(pr.number);
       if (existing) {
         nextNode.loaded = existing.loaded;
+        nextNode.loading = existing.loading;
+        nextNode.expanded = existing.expanded;
         nextNode.fileNodes = existing.fileNodes.map((fileNode) => new FileNode(
           fileNode.file,
           nextNode,
@@ -76,24 +88,38 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
     this._onDidChangeTreeData.fire(node);
   }
 
+  async loadPR(prNode: PRNode): Promise<void> {
+    await this.ensureLoaded(prNode);
+  }
+
+  setPRExpanded(prNode: PRNode, expanded: boolean): void {
+    prNode.expanded = expanded;
+  }
+
   getTreeItem(element: ReviewTreeNode): vscode.TreeItem {
     if (element instanceof PRNode) {
       const item = new vscode.TreeItem(
         `#${element.pr.number}: ${element.pr.title}`,
-        vscode.TreeItemCollapsibleState.Collapsed,
+        element.expanded
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.Collapsed,
       );
       item.iconPath = new vscode.ThemeIcon(
         element.pr.isDraft ? 'git-pull-request-draft' : 'git-pull-request',
       );
       item.contextValue = 'pr';
-      item.id = `pr-${element.pr.number}`;
+      item.id = `pr-${element.pr.number}-${element.expanded ? 'expanded' : 'collapsed'}`;
       return item;
     }
 
     if (element instanceof FileNode) {
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       const fileUri = vscode.Uri.file(`${workspaceRoot}/${element.file.filename}`);
-      const item = new vscode.TreeItem(fileUri, vscode.TreeItemCollapsibleState.Expanded);
+      const item = new vscode.TreeItem(
+        fileUri,
+        vscode.TreeItemCollapsibleState.Expanded,
+      );
+      item.resourceUri = fileUri;
       item.description = `+${element.file.additions} -${element.file.deletions}`;
       const unresolvedCount = element.threads.filter((thread) => !thread.isResolved).length;
       item.tooltip = unresolvedCount > 0
@@ -101,36 +127,63 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
         : element.file.filename;
       item.contextValue = 'file';
       item.command = {
-        command: 'vscode.open',
+        command: 'githubReviewer.openFile',
         title: 'Open file',
-        arguments: [fileUri],
+        arguments: [element],
       };
       return item;
     }
 
     if (element instanceof FolderNode) {
       const item = new vscode.TreeItem(element.name, vscode.TreeItemCollapsibleState.Expanded);
-      item.iconPath = new vscode.ThemeIcon('folder');
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      item.resourceUri = vscode.Uri.file(`${workspaceRoot}/${element.fullPath}`);
+      item.iconPath = vscode.ThemeIcon.Folder;
       item.id = `folder-${element.prNode.pr.number}-${element.fullPath}`;
       item.tooltip = element.fullPath;
       item.contextValue = 'folder';
       return item;
     }
 
+    if (element instanceof CommentNode) {
+      const preview = element.comment.body.split('\n')[0].slice(0, 80) || '(no comment)';
+      const item = new vscode.TreeItem(
+        `${element.comment.author.login}: ${preview}`,
+        vscode.TreeItemCollapsibleState.None,
+      );
+      item.iconPath = new vscode.ThemeIcon('comment');
+      item.tooltip = new vscode.MarkdownString(element.comment.body || '(no comment)');
+      item.description = element.index === 0 ? 'opened' : `reply ${element.index}`;
+      item.contextValue = 'comment';
+      item.id = `comment-${element.comment.id}`;
+      item.command = {
+        command: 'githubReviewer.openThread',
+        title: 'Open thread',
+        arguments: [element.threadNode],
+      };
+      return item;
+    }
+
     const firstComment = element.thread.comments[0];
     const preview = firstComment?.body.split('\n')[0].slice(0, 80) ?? '(no comment)';
     const author = firstComment?.author.login ?? 'unknown';
-    const lineInfo = element.thread.line ? `:${element.thread.line}` : '';
+    const threadLine = getReviewThreadLine(element.thread);
+    const lineInfo = threadLine ? `:${threadLine}` : '';
+    const commentCount = element.thread.comments.length;
 
     const item = new vscode.TreeItem(
       `${author}: ${preview}`,
-      vscode.TreeItemCollapsibleState.None,
+      commentCount > 1
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.None,
     );
     const isResolved = element.thread.isResolved;
     item.iconPath = new vscode.ThemeIcon(
       isResolved ? 'pass' : (element.thread.isOutdated ? 'comment-draft' : 'comment-unresolved'),
     );
-    item.description = lineInfo;
+    item.description = [lineInfo, commentCount > 1 ? `${commentCount} comments` : '']
+      .filter(Boolean)
+      .join(' ');
     item.tooltip = new vscode.MarkdownString(
       `**${author}** on \`${element.fileNode.file.filename}${lineInfo}\`\n\n${firstComment?.body ?? ''}`,
     );
@@ -152,28 +205,7 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
     }
 
     if (element instanceof PRNode) {
-      if (!element.loaded && this.loadPRData) {
-        try {
-          const { files, threads } = await this.loadPRData(element.pr);
-          element.fileNodes = files
-            .sort((a, b) => a.filename.localeCompare(b.filename))
-            .map((file) => new FileNode(
-              file,
-              element,
-              threads
-                .filter((thread) => thread.path === file.filename)
-                .sort(compareThreads),
-            ));
-          element.treeNodes = [];
-          element.visibleFileNodes.clear();
-          element.loaded = true;
-          this._onDidChangeTreeData.fire(element);
-        } catch {
-          element.treeNodes = [];
-          element.visibleFileNodes.clear();
-          element.loaded = true;
-        }
-      }
+      await this.ensureLoaded(element);
       return this.ensureTreeNodes(element);
     }
 
@@ -182,12 +214,20 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
     }
 
     if (element instanceof FileNode) {
-      const visible = this.showResolved
+      const visibleThreads = this.showResolved
         ? element.threads
         : element.threads.filter((thread) => !thread.isResolved);
-      return [...visible]
+      return [...visibleThreads]
         .sort(compareThreads)
         .map((thread) => new ThreadNode(thread, element));
+    }
+
+    if (element instanceof ThreadNode) {
+      if (element.thread.comments.length <= 1) {
+        return [];
+      }
+
+      return element.thread.comments.map((comment, index) => new CommentNode(comment, element, index));
     }
 
     return [];
@@ -206,6 +246,9 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
     if (element instanceof ThreadNode) {
       return element.fileNode;
     }
+    if (element instanceof CommentNode) {
+      return element.threadNode;
+    }
     return undefined;
   }
 
@@ -223,6 +266,20 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
     treeView.badge = count > 0
       ? { value: count, tooltip: `${count} unresolved thread${count === 1 ? '' : 's'}` }
       : undefined;
+  }
+
+  markThreadResolved(threadId: string): PRNode | undefined {
+    for (const prNode of this._prNodes) {
+      for (const fileNode of prNode.fileNodes) {
+        const thread = fileNode.threads.find((candidate) => candidate.id === threadId);
+        if (thread) {
+          thread.isResolved = true;
+          return prNode;
+        }
+      }
+    }
+
+    return undefined;
   }
 
   getAllThreadNodes(): ThreadNode[] {
@@ -267,10 +324,6 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
       return [];
     }
 
-    if (prNode.treeNodes.length > 0) {
-      return prNode.treeNodes;
-    }
-
     prNode.treeNodes = buildFolderTree(prNode.fileNodes, prNode);
     prNode.visibleFileNodes.clear();
     for (const fileNode of flattenTreeItems(prNode.treeNodes)) {
@@ -278,11 +331,41 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
     }
     return prNode.treeNodes;
   }
+
+  private async ensureLoaded(prNode: PRNode): Promise<void> {
+    if (prNode.loaded || !this.loadPRData) {
+      return;
+    }
+
+    if (!prNode.loading) {
+      prNode.loading = this.loadPRData(prNode.pr)
+        .then(({ files, threads }) => {
+          prNode.fileNodes = files
+            .sort((a, b) => a.filename.localeCompare(b.filename))
+            .map((file) => new FileNode(
+              file,
+              prNode,
+              threads
+                .filter((thread) => thread.path === file.filename)
+                .sort(compareThreads),
+            ));
+          prNode.treeNodes = [];
+          prNode.visibleFileNodes.clear();
+          prNode.loaded = true;
+          this._onDidChangeTreeData.fire(prNode);
+        })
+        .finally(() => {
+          prNode.loading = null;
+        });
+    }
+
+    await prNode.loading;
+  }
 }
 
 function compareThreads(left: ReviewThread, right: ReviewThread): number {
-  const leftLine = left.line ?? 0;
-  const rightLine = right.line ?? 0;
+  const leftLine = getReviewThreadLine(left) ?? 0;
+  const rightLine = getReviewThreadLine(right) ?? 0;
   if (leftLine !== rightLine) {
     return leftLine - rightLine;
   }

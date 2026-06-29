@@ -57,6 +57,8 @@ function createVscodeMock(workspacePath = '/workspace') {
     }
   }
 
+  ThemeIcon.Folder = new ThemeIcon('folder');
+
   class MarkdownString {
     constructor(value) {
       this.value = value;
@@ -152,6 +154,7 @@ function createPR(overrides = {}) {
     nodeId: overrides.nodeId ?? 'PR_node_42',
     title: overrides.title ?? 'Sidebar tree',
     headRefName: overrides.headRefName ?? 'feature/sidebar-tree',
+    baseRefName: overrides.baseRefName ?? 'main',
     isDraft: overrides.isDraft ?? false,
   };
 }
@@ -199,7 +202,12 @@ test('ReviewTreeProvider lazily loads PR files and preserves loaded data across 
   assert.equal(prItem.collapsibleState, 1);
   assert.equal(prItem.iconPath.id, 'git-pull-request');
   assert.equal(prItem.contextValue, 'pr');
-  assert.equal(prItem.id, 'pr-42');
+  assert.equal(prItem.id, 'pr-42-collapsed');
+
+  provider.setPRExpanded(rootNodes[0], true);
+  const expandedPrItem = provider.getTreeItem(rootNodes[0]);
+  assert.equal(expandedPrItem.collapsibleState, 2);
+  assert.equal(expandedPrItem.id, 'pr-42-expanded');
 
   const draftItem = provider.getTreeItem(rootNodes[1]);
   assert.equal(draftItem.iconPath.id, 'git-pull-request-draft');
@@ -257,7 +265,7 @@ test('ReviewTreeProvider lazily loads PR files and preserves loaded data across 
 
 test('ReviewTreeProvider builds file and thread items, parents, navigation ordering, and badge counts', async () => {
   const vscodeMock = createVscodeMock('/workspace-root');
-  const { FileNode, PRNode, ReviewTreeProvider, ThreadNode } = loadReviewTreeModule(vscodeMock);
+  const { CommentNode, FileNode, PRNode, ReviewTreeProvider, ThreadNode } = loadReviewTreeModule(vscodeMock);
   const provider = new ReviewTreeProvider();
 
   provider.updatePRs([createPR()]);
@@ -273,6 +281,13 @@ test('ReviewTreeProvider builds file and thread items, parents, navigation order
         author: { login: 'hubot', avatarUrl: '' },
         createdAt: '2026-06-25T10:00:00Z',
         url: 'https://github.com/octo/reviewer/pull/42#discussion_r10',
+      },
+      {
+        id: 'comment-reply',
+        body: 'I updated the branch and added coverage.',
+        author: { login: 'octocat', avatarUrl: '' },
+        createdAt: '2026-06-25T10:15:00Z',
+        url: 'https://github.com/octo/reviewer/pull/42#discussion_r11',
       },
     ],
   });
@@ -312,7 +327,8 @@ test('ReviewTreeProvider builds file and thread items, parents, navigation order
   assert.equal(fileItem.description, '+12 -3');
   assert.equal(fileItem.tooltip, 'src/alpha.ts — 2 unresolved');
   assert.equal(fileItem.contextValue, 'file');
-  assert.equal(fileItem.command.command, 'vscode.open');
+  assert.equal(fileItem.command.command, 'githubReviewer.openFile');
+  assert.equal(fileItem.command.arguments[0], prNode.fileNodes[0]);
 
   const threadNodes = await provider.getChildren(prNode.fileNodes[0]);
   assert.deepEqual(threadNodes.map((node) => node.thread.id), ['thread-old', 'thread-a']);
@@ -322,13 +338,17 @@ test('ReviewTreeProvider builds file and thread items, parents, navigation order
   assert.ok(oldNode instanceof ThreadNode);
   assert.equal(provider.getParent(prNode.fileNodes[0]), prNode);
   assert.equal(provider.getParent(liveNode), prNode.fileNodes[0]);
-  assert.equal((await provider.getChildren(liveNode)).length, 0);
+  const commentNodes = await provider.getChildren(liveNode);
+  assert.equal(commentNodes.length, 2);
+  assert.ok(commentNodes[0] instanceof CommentNode);
+  assert.equal(provider.getParent(commentNodes[0]), liveNode);
+  assert.equal((await provider.getChildren(commentNodes[0])).length, 0);
 
   const liveItem = provider.getTreeItem(liveNode);
   assert.equal(liveItem.label, 'hubot: Refactor this conditional before merging.');
-  assert.equal(liveItem.collapsibleState, 0);
+  assert.equal(liveItem.collapsibleState, 2);
   assert.equal(liveItem.iconPath.id, 'comment-unresolved');
-  assert.equal(liveItem.description, ':33');
+  assert.equal(liveItem.description, ':33 2 comments');
   assert.equal(
     liveItem.tooltip.value,
     '**hubot** on `src/alpha.ts:33`\n\nRefactor this conditional before merging.\nSecond line ignored.',
@@ -338,6 +358,24 @@ test('ReviewTreeProvider builds file and thread items, parents, navigation order
   assert.equal(liveItem.command.command, 'githubReviewer.openThread');
   assert.equal(liveItem.command.title, 'Open thread');
   assert.equal(liveItem.command.arguments[0], liveNode);
+
+  const firstCommentItem = provider.getTreeItem(commentNodes[0]);
+  assert.equal(firstCommentItem.label, 'hubot: Refactor this conditional before merging.');
+  assert.equal(firstCommentItem.collapsibleState, 0);
+  assert.equal(firstCommentItem.iconPath.id, 'comment');
+  assert.equal(firstCommentItem.description, 'opened');
+  assert.equal(
+    firstCommentItem.tooltip.value,
+    'Refactor this conditional before merging.\nSecond line ignored.',
+  );
+  assert.equal(firstCommentItem.contextValue, 'comment');
+  assert.equal(firstCommentItem.id, 'comment-comment-live');
+  assert.equal(firstCommentItem.command.command, 'githubReviewer.openThread');
+  assert.equal(firstCommentItem.command.arguments[0], liveNode);
+
+  const secondCommentItem = provider.getTreeItem(commentNodes[1]);
+  assert.equal(secondCommentItem.label, 'octocat: I updated the branch and added coverage.');
+  assert.equal(secondCommentItem.description, 'reply 1');
 
   const outdatedItem = provider.getTreeItem(oldNode);
   assert.equal(outdatedItem.label, 'unknown: (no comment)');
@@ -369,8 +407,14 @@ test('ReviewTreeProvider builds file and thread items, parents, navigation order
   assert.equal(provider.unresolvedCount(), 3);
   assert.equal(provider.unresolvedCount(prNode), 3);
 
+  const updatedPrNode = provider.markThreadResolved('thread-a');
+  assert.equal(updatedPrNode, prNode);
+  assert.equal(alphaThread.isResolved, true);
+  assert.equal(provider.unresolvedCount(), 2);
+  assert.equal(provider.markThreadResolved('missing-thread'), undefined);
+
   const allThreadNodes = provider.getAllThreadNodes();
-  assert.deepEqual(allThreadNodes.map((node) => node.thread.id), ['thread-old', 'thread-a', 'thread-b']);
+  assert.deepEqual(allThreadNodes.map((node) => node.thread.id), ['thread-old', 'thread-b']);
 
   const refreshEvents = [];
   provider.onDidChangeTreeData((value) => refreshEvents.push(value));

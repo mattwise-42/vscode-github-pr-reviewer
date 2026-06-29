@@ -58,6 +58,15 @@ function createVscodeMock({ ghPrActive = false, workspaceRoot = '/workspace' } =
     },
     workspace: {
       workspaceFolders: workspaceRoot ? [{ uri: { fsPath: workspaceRoot } }] : undefined,
+      fs: {
+        async stat(uri) {
+          const prefix = `${workspaceRoot}/`;
+          if (uri.fsPath.startsWith(prefix)) {
+            return {};
+          }
+          throw new Error('missing');
+        },
+      },
       asRelativePath(uri) {
         const prefix = `${workspaceRoot}/`;
         return uri.fsPath.startsWith(prefix) ? uri.fsPath.slice(prefix.length) : uri.fsPath;
@@ -122,22 +131,22 @@ function loadCommentsModule(vscodeMock) {
   }
 }
 
-test('CommentsController disables itself when the GitHub PR extension is active', () => {
+test('CommentsController stays enabled when the GitHub PR extension is active', () => {
   const env = createVscodeMock({ ghPrActive: true });
   const { CommentsController } = loadCommentsModule(env.vscode);
   const controller = new CommentsController();
 
-  assert.equal(controller.isEnabled(), false);
-  assert.equal(env.createCommentControllerCalls, 0);
+  assert.equal(controller.isEnabled(), true);
+  assert.equal(env.createCommentControllerCalls, 1);
 });
 
-test('CommentsController creates expanded VS Code threads, exposes commenting ranges, and tracks GitHub thread ids', () => {
+test('CommentsController creates expanded VS Code threads, exposes commenting ranges, and tracks GitHub thread ids', async () => {
   const env = createVscodeMock();
   const { CommentsController } = loadCommentsModule(env.vscode);
   const controller = new CommentsController();
   controller.setChangedFiles(['src/github.ts']);
 
-  controller.update([
+  await controller.update([
     {
       id: 'thread-node-1',
       path: 'src/github.ts',
@@ -176,7 +185,11 @@ test('CommentsController creates expanded VS Code threads, exposes commenting ra
   assert.equal(thread.range.start.character, 0);
   assert.equal(thread.range.end.line, 3);
   assert.equal(thread.range.end.character, 0);
-  assert.equal(thread.comments[0].body.value, 'Needs a test');
+  assert.equal(
+    thread.comments[0].body.value,
+    'Needs a test\n\n[Open on GitHub](https://github.com/octo/reviewer/pull/42#discussion_r1)',
+  );
+  assert.equal(thread.comments[0].body.isTrusted, false);
   assert.equal(thread.comments[0].mode, 'preview');
   assert.equal(thread.comments[0].author.name, 'octocat');
   assert.equal(
@@ -190,6 +203,10 @@ test('CommentsController creates expanded VS Code threads, exposes commenting ra
   assert.equal(thread.collapsibleState, 'expanded');
   assert.equal(thread.contextValue, 'unresolved');
   assert.equal(controller.getThreadId(thread), 'thread-node-1');
+  assert.equal(
+    controller.getThreadUrl(thread),
+    'https://github.com/octo/reviewer/pull/42#discussion_r1',
+  );
 
   const changedRanges = env.commentController.commentingRangeProvider.provideCommentingRanges({
     uri: { fsPath: '/workspace/src/github.ts' },
@@ -208,14 +225,24 @@ test('CommentsController creates expanded VS Code threads, exposes commenting ra
   thread.collapsibleState = 'collapsed';
   controller.expandThread('thread-node-1');
   assert.equal(thread.collapsibleState, 'expanded');
+
+  controller.showThread('thread-node-1', {
+    toString() {
+      return 'github-reviewer-remote:/src/github.ts?ref=abc123';
+    },
+  });
+  const reboundThread = env.createdThreads[1];
+  assert.equal(thread.disposed, true);
+  assert.equal(reboundThread.uri.toString(), 'github-reviewer-remote:/src/github.ts?ref=abc123');
+  assert.equal(controller.getThreadId(reboundThread), 'thread-node-1');
 });
 
-test('CommentsController disposes old threads, clears thread id mappings, and disposes the controller', () => {
+test('CommentsController disposes old threads, clears thread id mappings, and disposes the controller', async () => {
   const env = createVscodeMock();
   const { CommentsController } = loadCommentsModule(env.vscode);
   const controller = new CommentsController();
 
-  controller.update([
+  await controller.update([
     {
       id: 'thread-node-1',
       path: 'src/github.ts',
@@ -232,7 +259,7 @@ test('CommentsController disposes old threads, clears thread id mappings, and di
 
   const firstThread = env.createdThreads[0];
 
-  controller.update([
+  await controller.update([
     {
       id: 'thread-node-2',
       path: 'src/github.ts',
@@ -251,6 +278,7 @@ test('CommentsController disposes old threads, clears thread id mappings, and di
 
   assert.equal(firstThread.disposed, true);
   assert.equal(controller.getThreadId(firstThread), undefined);
+  assert.equal(controller.getThreadUrl(firstThread), undefined);
   assert.equal(secondThread.range.start.line, 0);
   assert.equal(secondThread.contextValue, 'unresolved');
   assert.equal(controller.getThreadId(secondThread), 'thread-node-2');
@@ -262,12 +290,12 @@ test('CommentsController disposes old threads, clears thread id mappings, and di
   assert.equal(env.commentController.disposed, true);
 });
 
-test('CommentsController marks resolved GitHub threads as resolved in VS Code', () => {
+test('CommentsController marks resolved GitHub threads as resolved in VS Code', async () => {
   const env = createVscodeMock();
   const { CommentsController } = loadCommentsModule(env.vscode);
   const controller = new CommentsController();
 
-  controller.update([
+  await controller.update([
     {
       id: 'thread-node-3',
       path: 'src/github.ts',
@@ -285,4 +313,38 @@ test('CommentsController marks resolved GitHub threads as resolved in VS Code', 
   const thread = env.createdThreads[0];
   assert.equal(thread.state, 'resolved');
   assert.equal(thread.contextValue, 'resolved');
+});
+
+test('CommentsController falls back to original comment line when thread line is missing', async () => {
+  const env = createVscodeMock();
+  const { CommentsController } = loadCommentsModule(env.vscode);
+  const controller = new CommentsController();
+
+  await controller.update([
+    {
+      id: 'thread-node-4',
+      path: 'src/github.ts',
+      line: null,
+      startLine: null,
+      diffSide: 'RIGHT',
+      isResolved: false,
+      isOutdated: false,
+      viewerCanResolve: true,
+      viewerCanReply: true,
+      comments: [
+        {
+          id: 'comment-4',
+          body: 'Anchor me correctly',
+          author: { login: 'octocat', avatarUrl: '' },
+          createdAt: '2026-06-25T10:00:00Z',
+          url: 'https://github.com/octo/reviewer/pull/42#discussion_r4',
+          originalLine: 23,
+        },
+      ],
+    },
+  ]);
+
+  const thread = env.createdThreads[0];
+  assert.equal(thread.range.start.line, 22);
+  assert.equal(thread.range.end.line, 22);
 });

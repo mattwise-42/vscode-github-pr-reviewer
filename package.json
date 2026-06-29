@@ -1,5 +1,5 @@
 {
-  "name": "github-reviewer",
+  "name": "github-pr-reviewer",
   "displayName": "GitHub PR Reviewer",
   "description": "ADO-style unresolved PR review thread sidebar for GitHub",
   "version": "0.0.1",
@@ -73,19 +73,37 @@
       {
         "command": "githubReviewer.showResolved",
         "title": "Show Resolved Threads",
-        "icon": "$(eye)",
+        "icon": "$(eye-closed)",
         "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.hideResolved",
         "title": "Hide Resolved Threads",
-        "icon": "$(eye-closed)",
+        "icon": "$(eye)",
         "category": "GitHub PR Reviewer"
       },
       {
         "command": "githubReviewer.replyToThreadNode",
         "title": "Reply to Thread",
         "icon": "$(reply)",
+        "category": "GitHub PR Reviewer"
+      },
+      {
+        "command": "githubReviewer.openOriginalComment",
+        "title": "Open on GitHub",
+        "icon": "$(link-external)",
+        "category": "GitHub PR Reviewer"
+      },
+      {
+        "command": "githubReviewer.expandPullRequest",
+        "title": "Expand All",
+        "icon": "$(expand-all)",
+        "category": "GitHub PR Reviewer"
+      },
+      {
+        "command": "githubReviewer.collapsePullRequest",
+        "title": "Collapse",
+        "icon": "$(collapse-all)",
         "category": "GitHub PR Reviewer"
       }
     ],
@@ -128,6 +146,16 @@
           "command": "githubReviewer.refresh",
           "when": "view == githubReviewer.reviewView",
           "group": "navigation@3"
+        },
+        {
+          "command": "githubReviewer.expandPullRequest",
+          "when": "view == githubReviewer.reviewView && githubReviewer.hasSelectedPR && !githubReviewer.selectedPRExpanded",
+          "group": "navigation@4"
+        },
+        {
+          "command": "githubReviewer.collapsePullRequest",
+          "when": "view == githubReviewer.reviewView && githubReviewer.hasSelectedPR && githubReviewer.selectedPRExpanded",
+          "group": "navigation@4"
         }
       ],
       "comments/commentThread/title": [
@@ -142,18 +170,38 @@
           "command": "githubReviewer.replyToThread",
           "when": "commentController == github-reviewer",
           "group": "inline"
+        },
+        {
+          "command": "githubReviewer.openOriginalComment",
+          "when": "commentController == github-reviewer",
+          "group": "inline@2"
         }
       ],
       "view/item/context": [
         {
+          "command": "githubReviewer.expandPullRequest",
+          "when": "view == githubReviewer.reviewView && viewItem == pr",
+          "group": "inline@0"
+        },
+        {
+          "command": "githubReviewer.collapsePullRequest",
+          "when": "view == githubReviewer.reviewView && viewItem == pr",
+          "group": "inline@1"
+        },
+        {
           "command": "githubReviewer.resolveThreadNode",
           "when": "view == githubReviewer.reviewView && viewItem == thread-unresolved",
-          "group": "inline@1"
+          "group": "inline@2"
         },
         {
           "command": "githubReviewer.replyToThreadNode",
           "when": "view == githubReviewer.reviewView && viewItem =~ /^thread-/",
-          "group": "inline@2"
+          "group": "inline@3"
+        },
+        {
+          "command": "githubReviewer.openOriginalComment",
+          "when": "view == githubReviewer.reviewView && (viewItem =~ /^thread-/ || viewItem == comment)",
+          "group": "inline@4"
         }
       ]
     }
