@@ -146,16 +146,6 @@
           "command": "githubReviewer.refresh",
           "when": "view == githubReviewer.reviewView",
           "group": "navigation@3"
-        },
-        {
-          "command": "githubReviewer.expandPullRequest",
-          "when": "view == githubReviewer.reviewView && githubReviewer.hasSelectedPR && !githubReviewer.selectedPRExpanded",
-          "group": "navigation@4"
-        },
-        {
-          "command": "githubReviewer.collapsePullRequest",
-          "when": "view == githubReviewer.reviewView && githubReviewer.hasSelectedPR && githubReviewer.selectedPRExpanded",
-          "group": "navigation@4"
         }
       ],
       "comments/commentThread/title": [

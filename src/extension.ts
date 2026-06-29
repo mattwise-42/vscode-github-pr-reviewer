@@ -67,7 +67,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const reviewProvider = new ReviewTreeProvider();
   const treeView = vscode.window.createTreeView<ReviewTreeNode>('githubReviewer.reviewView', {
     treeDataProvider: reviewProvider,
-    showCollapseAll: true,
   });
   const commentsCtrl = new CommentsController();
   const remoteFileContents = new Map<string, string>();
