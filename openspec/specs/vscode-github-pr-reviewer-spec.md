@@ -95,7 +95,7 @@ vscode.comments.registerCommentProvider('github-pr-reviewer', treeProvider)
 ✅ Navigation: Click to jump to file/line in editor  
 ✅ Comment Interaction: Inline reply and resolution via ✓ button
 ✅ PR Detection: Automatic detection of current branch's PR
-✅ Auto-refresh: Re-detects PR when switching branches
+✅ Background Refresh: Regular automated data refresh for latest updates
 ✅ Integration: Native VS Code comments UI with custom styling
 ✅ Context Menus: Right-click actions on threads and files
 ✅ Status Badge: Icon shows unresolved thread count
@@ -144,6 +144,7 @@ This OpenSpec documents the architectural decisions made so far:
 3. **Data Model**: Hierarchical tree structure matching developer mental models
 4. **Auth Handling**: Delegation to VS Code's built-in GitHub authentication
 5. **Refresh Strategy**: Auto-detection on branch switching, manual refresh option
+6. **Background Refresh**: Continuous automated data synchronization with configurable intervals
 
 ## Open Questions / Next Steps
 
