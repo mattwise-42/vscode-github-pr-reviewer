@@ -50,8 +50,8 @@ src/
 
 #### Comments API
 ```typescript
-vscode.comments.createCommentController('github-reviewer', 'GitHub Review Threads')
-vscode.comments.registerCommentProvider('github-reviewer', treeProvider)
+vscode.comments.createCommentController('github-pr-reviewer', 'GitHub Review Threads')
+vscode.comments.registerCommentProvider('github-pr-reviewer', treeProvider)
 ```
 
 #### Commands (via package.json)
