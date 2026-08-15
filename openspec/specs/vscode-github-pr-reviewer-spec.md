@@ -28,7 +28,7 @@ src/
 - `PRSummary`: Pull request metadata for identification
 - GraphQL response types and transformation utilities
 
-#### 2. Tree Structure (review-tree.ts) 
+#### 2. Tree Structure (review-tree.ts)
 - **Node Types**: PRNode, FolderNode, FileNode, ThreadNode, CommentNode
 - **Provider**: ReviewTreeProvider implementing VS Code tree data provider
 - **Relationships**: Hierarchical organization by PR → Folder → File → Threads
@@ -92,7 +92,7 @@ vscode.comments.registerCommentProvider('github-pr-reviewer', treeProvider)
 ### Current Capabilities
 
 ✅ Thread Display: Unresolved threads grouped by file/folder structure
-✅ Navigation: Click to jump to file/line in editor  
+✅ Navigation: Click to jump to file/line in editor
 ✅ Comment Interaction: Inline reply and resolution via ✓ button
 ✅ PR Detection: Automatic detection of current branch's PR
 ✅ Background Refresh: Regular automated data refresh for latest updates
@@ -157,7 +157,7 @@ This OpenSpec documents the architectural decisions made so far:
 ## Files and Responsibilities
 
 - **github.ts**: API integration, data fetching, GraphQL operations
-- **review-tree.ts**: Tree structure logic, VS Code tree provider implementation  
+- **review-tree.ts**: Tree structure logic, VS Code tree provider implementation
 - **comments.ts**: Inline comment widget creation and management
 - **extension.ts**: Coordination, command registration, lifecycle management
 
