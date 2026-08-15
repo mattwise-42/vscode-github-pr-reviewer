@@ -1,0 +1,50 @@
+name: Bump extension version
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Commit version bump
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          while :; do
+            git fetch origin main
+            worktree="$(mktemp -d)"
+            git worktree add --detach "$worktree" origin/main
+            if ! (
+              cd "$worktree" &&
+              npm version patch --no-git-tag-version &&
+              git add package.json package-lock.json &&
+              git commit -m "chore: bump extension version to $(node -p "require('./package.json').version")"
+            ); then
+              git worktree remove --force "$worktree"
+              exit 1
+            fi
+            if git -C "$worktree" push origin HEAD:main; then
+              git worktree remove --force "$worktree"
+              exit 0
+            fi
+            git worktree remove --force "$worktree"
+            sleep 2
+          done
