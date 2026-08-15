@@ -4,15 +4,26 @@ on:
   pull_request_target:
     types: [closed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Release level for an intentional minor or major release
+        required: true
+        type: choice
+        options:
+          - minor
+          - major
 
 permissions:
   contents: write
 
 jobs:
   bump:
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      VERSION_LEVEL: ${{ github.event_name == 'workflow_dispatch' && inputs.release_type || 'patch' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +45,7 @@ jobs:
             git worktree add --detach "$worktree" origin/main
             if ! (
               cd "$worktree" &&
-              npm version patch --no-git-tag-version &&
+              npm version "$VERSION_LEVEL" --no-git-tag-version &&
               git add package.json package-lock.json &&
               git commit -m "chore: bump extension version to $(node -p "require('./package.json').version")"
             ); then
