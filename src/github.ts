@@ -54,8 +54,10 @@ export interface GitHubRepo {
   repo: string;
 }
 
-const GITHUB_REST_API_URL = 'https://api.github.com';
-const GITHUB_GRAPHQL_API_URL = 'https://api.github.com/graphql';
+const GITHUB_API_BASE_URL = (process.env.GITHUB_REVIEWER_API_URL ?? 'https://api.github.com')
+  .replace(/\/+$/, '');
+const GITHUB_REST_API_URL = GITHUB_API_BASE_URL;
+const GITHUB_GRAPHQL_API_URL = `${GITHUB_API_BASE_URL}/graphql`;
 
 // ponytail: first 100 threads; add cursor pagination if this becomes a problem
 const GET_PR_REVIEW_THREADS_QUERY = `
@@ -571,7 +573,7 @@ export async function fetchPRFiles(
 ): Promise<PRFile[]> {
   // ponytail: first 100 files; add pagination if PRs with 100+ changed files become common
   const response = await fetch(
-    `https://api.github.com/repos/${repo.owner}/${repo.repo}/pulls/${prNumber}/files?per_page=100`,
+    `${GITHUB_REST_API_URL}/repos/${repo.owner}/${repo.repo}/pulls/${prNumber}/files?per_page=100`,
     { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } },
   );
   if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
@@ -581,7 +583,7 @@ export async function fetchPRFiles(
 export async function fetchOpenPRs(token: string, repo: GitHubRepo): Promise<PRSummary[]> {
   // ponytail: first 30 open PRs; add pagination if needed
   const response = await fetch(
-    `https://api.github.com/repos/${repo.owner}/${repo.repo}/pulls?state=open&per_page=30`,
+    `${GITHUB_REST_API_URL}/repos/${repo.owner}/${repo.repo}/pulls?state=open&per_page=30`,
     { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } },
   );
   if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);

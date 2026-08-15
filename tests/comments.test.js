@@ -237,6 +237,31 @@ test('CommentsController creates expanded VS Code threads, exposes commenting ra
   assert.equal(controller.getThreadId(reboundThread), 'thread-node-1');
 });
 
+test('CommentsController ignores stale concurrent updates', async () => {
+  const env = createVscodeMock();
+  const { CommentsController } = loadCommentsModule(env.vscode);
+  const controller = new CommentsController();
+  const reviewThread = {
+    id: 'thread-node-1',
+    path: 'src/github.ts',
+    line: 4,
+    startLine: 4,
+    diffSide: 'RIGHT',
+    isResolved: false,
+    isOutdated: false,
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [],
+  };
+
+  await Promise.all([
+    controller.update([reviewThread]),
+    controller.update([reviewThread]),
+  ]);
+
+  assert.equal(env.createdThreads.filter((thread) => !thread.disposed).length, 1);
+});
+
 test('CommentsController disposes old threads, clears thread id mappings, and disposes the controller', async () => {
   const env = createVscodeMock();
   const { CommentsController } = loadCommentsModule(env.vscode);

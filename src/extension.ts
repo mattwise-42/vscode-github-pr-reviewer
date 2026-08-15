@@ -50,6 +50,19 @@ interface GitExtensionApi {
 async function getGitHubSession(
   options: { silent?: boolean; createIfNone?: boolean },
 ): Promise<vscode.AuthenticationSession | undefined> {
+  const testToken = process.env.GITHUB_REVIEWER_TEST_TOKEN;
+  if (testToken) {
+    return {
+      id: 'github-reviewer-test',
+      accessToken: testToken,
+      account: {
+        id: 'github-reviewer-test',
+        label: 'GitHub Reviewer Test',
+      },
+      scopes: ['repo'],
+    };
+  }
+
   try {
     return await vscode.authentication.getSession('github', ['repo'], options);
   } catch {
@@ -349,9 +362,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const refreshCommand = vscode.commands.registerCommand('githubReviewer.refresh', async () => {
     try {
       if (!session) {
-        session = await vscode.authentication.getSession('github', ['repo'], {
-          createIfNone: true,
-        });
+        session = await getGitHubSession({ createIfNone: true });
       }
 
       await loadPRs({ forceReloadCurrentPR: true });
