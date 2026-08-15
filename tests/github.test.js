@@ -137,6 +137,58 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
   }
 });
 
+test('GitHub API requests use the configured API base URL', async () => {
+  const previousApiUrl = process.env.GITHUB_REVIEWER_API_URL;
+  process.env.GITHUB_REVIEWER_API_URL = 'http://127.0.0.1:43123';
+  let calls = 0;
+  const restoreFetch = mockFetch(async (url, init) => {
+    calls += 1;
+    if (calls === 1) {
+      assert.equal(
+        url,
+        'http://127.0.0.1:43123/repos/octo/reviewer/pulls?state=open&per_page=30',
+      );
+      return createResponse({
+        json: [{
+          number: 42,
+          node_id: 'PR_node_42',
+          title: 'Thread sidebar',
+          draft: false,
+          head: { ref: 'feature/thread-sidebar' },
+          base: { ref: 'main' },
+        }],
+      });
+    }
+
+    assert.equal(url, 'http://127.0.0.1:43123/graphql');
+    assert.equal(init?.headers?.['Content-Type'], 'application/json');
+    return createResponse({
+      json: {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: { nodes: [] },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  try {
+    const { fetchOpenPRs, fetchReviewThreads } = loadGithubModule();
+    await fetchOpenPRs('token-123', { owner: 'octo', repo: 'reviewer' });
+    await fetchReviewThreads('token-123', { owner: 'octo', repo: 'reviewer' }, 42);
+  } finally {
+    restoreFetch();
+    if (previousApiUrl === undefined) {
+      delete process.env.GITHUB_REVIEWER_API_URL;
+    } else {
+      process.env.GITHUB_REVIEWER_API_URL = previousApiUrl;
+    }
+  }
+});
+
 test('fetchFileContent returns decoded file contents and null for missing files', async () => {
   const { fetchFileContent } = loadGithubModule();
   let call = 0;

@@ -45,6 +45,22 @@ npm run build
 
 Then press **F5** in VS Code to open an Extension Development Host with the extension loaded.
 
+## Test
+
+Run the unit tests:
+
+```bash
+npm test
+```
+
+Run the Playwright end-to-end tests:
+
+```bash
+npm run test:e2e
+```
+
+The end-to-end suite launches an isolated VS Code Extension Development Host and uses a local mock GitHub API. It does not need GitHub credentials or change the user's VS Code profile. Use `npm run test:e2e:headed` to keep the test window visible.
+
 ## Usage
 
 1. Open a repo folder in VS Code that has an open PR on GitHub
