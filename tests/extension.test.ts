@@ -35,16 +35,19 @@ test('opens a review thread in the workspace file', async () => {
     .first();
   await expect(thread).toBeVisible();
   await thread.click();
-  await expect(page.locator('.comment-thread')).toBeVisible();
-  await page.getByRole('button', { name: 'Reply...' }).click();
-  const reply = page.getByLabel(/Comment, use/).getByRole('textbox');
+  const editor = page.getByRole('main');
+  await expect(
+    editor.getByRole('treeitem', { name: /test-user, Please review this fixture thread/ }),
+  ).toBeVisible();
+  await editor.getByRole('button', { name: 'Reply...' }).click();
+  const reply = editor.getByLabel(/Comment, use/).getByRole('textbox');
   await expect(reply).toBeVisible();
   await reply.focus();
   await page.keyboard.type('Looks good');
-  await page.getByRole('button', { name: /Reply to Thread/ }).last().click();
+  await editor.getByRole('button', { name: /Reply to Thread/ }).click();
   await expect(page.getByText('Looks good', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Resolve' }).last().click();
+  await editor.getByRole('button', { name: 'Resolve' }).first().click();
   await expect(
     page.getByRole('treeitem', { name: /test-user: Please review this fixture thread/ }).first(),
   ).toHaveCount(0);
