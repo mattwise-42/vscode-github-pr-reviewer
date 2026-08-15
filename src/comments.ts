@@ -9,6 +9,7 @@ export class CommentsController implements vscode.Disposable {
   private _threadUrlMap: Map<vscode.CommentThread, string> = new Map();
   private _reviewThreads: Map<string, ReviewThread> = new Map();
   private _changedFiles = new Set<string>();
+  private _updateGeneration = 0;
 
   constructor() {
     this._ctrl = vscode.comments.createCommentController(
@@ -90,6 +91,7 @@ export class CommentsController implements vscode.Disposable {
       return;
     }
 
+    const updateGeneration = ++this._updateGeneration;
     for (const thread of this._threads.values()) {
       thread.dispose();
     }
@@ -111,11 +113,15 @@ export class CommentsController implements vscode.Disposable {
       } catch {
         continue;
       }
+      if (updateGeneration !== this._updateGeneration) {
+        return;
+      }
       this.createThread(reviewThread, fileUri);
     }
   }
 
   dispose(): void {
+    this._updateGeneration += 1;
     for (const thread of this._threads.values()) {
       thread.dispose();
     }
