@@ -3,6 +3,3 @@ dist/
 dist-tests/
 node_modules/
 
-
-# APM dependencies
-apm_modules/
