@@ -20,7 +20,8 @@
         "env": {
           "GITHUB_REVIEWER_MOCK_PORT": "43123",
           "GITHUB_REVIEWER_MOCK_BRANCH": "auto",
-          "GITHUB_REVIEWER_MOCK_FILE": "src/extension.ts"
+          "GITHUB_REVIEWER_MOCK_FILE": "src/extension.ts",
+          "GITHUB_REVIEWER_MOCK_FILES": "src/extension.ts,src/comments.ts,src/review-tree.ts"
         }
       },
       "problemMatcher": []

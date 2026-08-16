@@ -3,6 +3,15 @@ const { execFileSync } = require('node:child_process');
 
 const port = Number(process.env.GITHUB_REVIEWER_MOCK_PORT ?? 43123);
 const mockFile = process.env.GITHUB_REVIEWER_MOCK_FILE ?? 'src/fixture.ts';
+const configuredFiles = (process.env.GITHUB_REVIEWER_MOCK_FILES ?? '')
+  .split(',')
+  .map((file) => file.trim())
+  .filter(Boolean);
+const mockFiles = configuredFiles.length > 0
+  ? configuredFiles
+  : [mockFile, 'src/fixture-secondary.ts', 'src/fixture-third.ts'];
+const secondaryMockFile = mockFiles[1] ?? mockFile;
+const tertiaryMockFile = mockFiles[2] ?? secondaryMockFile;
 const configuredBranch = process.env.GITHUB_REVIEWER_MOCK_BRANCH;
 const mockBranch = configuredBranch === 'auto'
   ? execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
@@ -80,6 +89,54 @@ const threads = new Map([
     originalCommit: { oid: 'fixture-commit-42' },
     }],
   }],
+  ['thread-42-extra', {
+    id: 'thread-42-extra',
+    isResolved: false,
+    isOutdated: false,
+    path: secondaryMockFile,
+    line: 6,
+    startLine: 6,
+    diffSide: 'RIGHT',
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [{
+      id: 'comment-42-extra',
+      body: 'Please add coverage for this helper.',
+      author: { login: 'reviewer-two', avatarUrl: '' },
+      createdAt: '2026-08-15T18:02:00Z',
+      url: 'http://github.test/pull/42#discussion_r42_extra',
+      line: 6,
+      startLine: 6,
+      originalLine: 6,
+      originalStartLine: 6,
+      commit: { oid: 'fixture-commit-42' },
+      originalCommit: { oid: 'fixture-commit-42' },
+    }],
+  }],
+  ['thread-42-resolved-extra', {
+    id: 'thread-42-resolved-extra',
+    isResolved: true,
+    isOutdated: false,
+    path: tertiaryMockFile,
+    line: 4,
+    startLine: 4,
+    diffSide: 'RIGHT',
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [{
+      id: 'comment-42-resolved-extra',
+      body: 'This follow-up note is already resolved.',
+      author: { login: 'reviewer-two', avatarUrl: '' },
+      createdAt: '2026-08-15T18:03:00Z',
+      url: 'http://github.test/pull/42#discussion_r42_resolved_extra',
+      line: 4,
+      startLine: 4,
+      originalLine: 4,
+      originalStartLine: 4,
+      commit: { oid: 'fixture-commit-42' },
+      originalCommit: { oid: 'fixture-commit-42' },
+    }],
+  }],
   ['thread-43', {
     id: 'thread-43',
     isResolved: false,
@@ -126,6 +183,54 @@ const threads = new Map([
     originalStartLine: 3,
     commit: { oid: 'fixture-commit-43' },
     originalCommit: { oid: 'fixture-commit-43' },
+    }],
+  }],
+  ['thread-43-extra', {
+    id: 'thread-43-extra',
+    isResolved: false,
+    isOutdated: false,
+    path: secondaryMockFile,
+    line: 6,
+    startLine: 6,
+    diffSide: 'RIGHT',
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [{
+      id: 'comment-43-extra',
+      body: 'Please check this second branch change.',
+      author: { login: 'reviewer-two', avatarUrl: '' },
+      createdAt: '2026-08-15T18:02:00Z',
+      url: 'http://github.test/pull/43#discussion_r43_extra',
+      line: 6,
+      startLine: 6,
+      originalLine: 6,
+      originalStartLine: 6,
+      commit: { oid: 'fixture-commit-43' },
+      originalCommit: { oid: 'fixture-commit-43' },
+    }],
+  }],
+  ['thread-43-resolved-extra', {
+    id: 'thread-43-resolved-extra',
+    isResolved: true,
+    isOutdated: false,
+    path: tertiaryMockFile,
+    line: 4,
+    startLine: 4,
+    diffSide: 'RIGHT',
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [{
+      id: 'comment-43-resolved-extra',
+      body: 'This second follow-up note is already resolved.',
+      author: { login: 'reviewer-two', avatarUrl: '' },
+      createdAt: '2026-08-15T18:03:00Z',
+      url: 'http://github.test/pull/43#discussion_r43_resolved_extra',
+      line: 4,
+      startLine: 4,
+      originalLine: 4,
+      originalStartLine: 4,
+      commit: { oid: 'fixture-commit-43' },
+      originalCommit: { oid: 'fixture-commit-43' },
     }],
   }],
 ]);
@@ -241,13 +346,13 @@ const server = http.createServer(async (request, response) => {
     request.method === 'GET'
     && /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/files$/.test(requestUrl.pathname)
   ) {
-    writeJson(response, 200, [{
-      filename: mockFile,
+    writeJson(response, 200, mockFiles.map((filename) => ({
+      filename,
       status: 'modified',
       additions: 1,
       deletions: 0,
       changes: 1,
-    }]);
+    })));
     return;
   }
 
