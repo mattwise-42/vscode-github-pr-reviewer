@@ -211,7 +211,7 @@
     "test:e2e:headed": "npm run build && playwright test --headed"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^26.2.0",
     "@types/vscode": "^1.85.0",
     "@playwright/test": "^1.55.0",
     "@vscode/test-electron": "^2.5.2",
