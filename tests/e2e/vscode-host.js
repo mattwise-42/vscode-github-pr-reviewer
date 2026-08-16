@@ -25,6 +25,14 @@ async function createFixtureWorkspace(parentPath) {
     path.join(workspacePath, 'src/fixture.ts'),
     'export const fixture = "main";\nexport const reviewLine = true;\n',
   );
+  await fs.promises.writeFile(
+    path.join(workspacePath, 'src/fixture-secondary.ts'),
+    'export const secondaryFixture = true;\n',
+  );
+  await fs.promises.writeFile(
+    path.join(workspacePath, 'src/fixture-third.ts'),
+    'export const thirdFixture = true;\n',
+  );
   runGit(workspacePath, ['init', '-b', 'main']);
   runGit(workspacePath, ['add', '.']);
   runGit(workspacePath, ['commit', '-m', 'Create fixture']);

@@ -7,6 +7,34 @@
       "script": "build",
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "Start mock GitHub API",
+      "type": "process",
+      "command": "node",
+      "args": ["tests/e2e/start-mock-github.js"],
+      "dependsOn": "npm: build",
+      "dependsOrder": "sequence",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "GITHUB_REVIEWER_MOCK_PORT": "43123",
+          "GITHUB_REVIEWER_MOCK_BRANCH": "auto",
+          "GITHUB_REVIEWER_MOCK_FILE": "src/extension.ts",
+          "GITHUB_REVIEWER_MOCK_FILES": "src/extension.ts,src/comments.ts,src/review-tree.ts"
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Stop mock GitHub API",
+      "type": "process",
+      "command": "node",
+      "args": ["tests/e2e/stop-mock-github.js"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
     }
   ]
 }

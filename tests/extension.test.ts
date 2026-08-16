@@ -25,7 +25,7 @@ test('loads the fixture pull request in the GitHub PR Reviewer view', async () =
 });
 
 test('opens a review thread in the workspace file', async () => {
-  const file = page.getByRole('treeitem', { name: /src\/fixture.ts/ });
+  const file = page.getByRole('treeitem', { name: /^src\/fixture\.ts —/ });
   await expect(file).toBeVisible();
   await file.click();
   await expect(page.getByRole('tab', { name: 'fixture.ts' })).toBeVisible();

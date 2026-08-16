@@ -421,3 +421,27 @@ test('ReviewTreeProvider builds file and thread items, parents, navigation order
   provider.refresh(prNode.fileNodes[0]);
   assert.equal(refreshEvents.at(-1), prNode.fileNodes[0]);
 });
+
+test('OpenCommentsProvider lists unresolved comments and opens their threads', async () => {
+  const vscodeMock = createVscodeMock('/workspace-root');
+  const { OpenCommentsProvider, OpenCommentNode } = loadReviewTreeModule(vscodeMock);
+  const provider = new OpenCommentsProvider();
+  const pr = createPR({ title: 'Open comments' });
+  const unresolvedThread = createThread({ path: 'src/alpha.ts', line: 9 });
+  const resolvedThread = createThread({ id: 'thread-resolved', isResolved: true });
+
+  provider.update([
+    { pr, thread: unresolvedThread },
+    { pr, thread: resolvedThread },
+  ]);
+
+  const nodes = await provider.getChildren();
+  assert.equal(nodes.length, 1);
+  assert.ok(nodes[0] instanceof OpenCommentNode);
+
+  const item = provider.getTreeItem(nodes[0]);
+  assert.equal(item.label, 'Please tighten this branch.');
+  assert.equal(item.description, 'octocat - src/alpha.ts:9');
+  assert.equal(item.command.command, 'githubReviewer.openThread');
+  assert.equal(item.command.arguments[0], nodes[0]);
+});

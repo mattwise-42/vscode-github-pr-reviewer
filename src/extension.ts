@@ -20,6 +20,8 @@ import {
   FileNode,
   FolderNode,
   PRNode,
+  OpenCommentNode,
+  OpenCommentsProvider,
   ReviewTreeNode,
   ReviewTreeProvider,
   ThreadNode,
@@ -71,7 +73,24 @@ async function getGitHubSession(
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const output = vscode.window.createOutputChannel('GitHub PR Reviewer');
+  context.subscriptions.push(output);
+  const log = (message: string): void => {
+    output.appendLine(`[${new Date().toISOString()}] ${message}`);
+  };
+  const logError = (message: string, error: unknown): void => {
+    const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+    log(`${message}: ${detail}`);
+    output.show(true);
+  };
+
+  log('Activating extension');
+  log(`GitHub API base URL: ${process.env.GITHUB_REVIEWER_API_URL ?? 'https://api.github.com'}`);
+  if (!vscode.workspace.workspaceFolders && process.env.GITHUB_REVIEWER_DEV_WORKSPACE) {
+    log(`Using development workspace fallback: ${process.env.GITHUB_REVIEWER_DEV_WORKSPACE}`);
+  }
   let session = await getGitHubSession({ silent: true });
+  log(session ? 'GitHub session available' : 'No GitHub session available');
   let currentRepo: GitHubRepo | null = null;
   let currentBranch: string | null = null;
   let navIndex = 0;
@@ -80,6 +99,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const reviewProvider = new ReviewTreeProvider();
   const treeView = vscode.window.createTreeView<ReviewTreeNode>('githubReviewer.reviewView', {
     treeDataProvider: reviewProvider,
+  });
+  const openCommentsProvider = new OpenCommentsProvider();
+  const openCommentsView = vscode.window.createTreeView('githubReviewer.openCommentsView', {
+    treeDataProvider: openCommentsProvider,
   });
   const commentsCtrl = new CommentsController();
   const remoteFileContents = new Map<string, string>();
@@ -104,7 +127,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   function workspaceRootPath(): string | undefined {
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      ?? process.env.GITHUB_REVIEWER_DEV_WORKSPACE;
   }
 
   function workspaceFileUri(relPath: string): vscode.Uri | undefined {
@@ -202,13 +226,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   async function syncComments(): Promise<void> {
-    const loadedNodes = reviewProvider.prNodes.filter((node) => node.loaded);
-    const threads = loadedNodes.flatMap((node) =>
-      node.fileNodes.flatMap((fileNode) => fileNode.threads),
-    ).filter((thread) => reviewProvider.showResolved || !thread.isResolved);
+    const targetPR = selectedPRNode ?? currentBranchNode();
+    const loadedNodes = targetPR?.loaded ? [targetPR] : [];
+    const entries = loadedNodes.flatMap((node) =>
+      node.fileNodes.flatMap((fileNode) =>
+        fileNode.threads.map((thread) => ({ thread, pr: node.pr })),
+      ),
+    );
+    const threads = entries
+      .map(({ thread }) => thread)
+      .filter((thread) => reviewProvider.showResolved || !thread.isResolved);
     const files = [...new Set(loadedNodes.flatMap((node) =>
       node.fileNodes.map((fileNode) => fileNode.file.filename),
     ))];
+    openCommentsProvider.update(entries);
     commentsCtrl.setChangedFiles(files);
     await commentsCtrl.update(threads);
   }
@@ -238,14 +269,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   reviewProvider.setLoader(async (pr: PRSummary) => {
     if (!session || !currentRepo) {
+      log(`Skipping pull request #${pr.number} load: no session or repository`);
       return { files: [], threads: [] };
     }
 
-    const [files, threads] = await Promise.all([
-      fetchPRFiles(session.accessToken, currentRepo, pr.number),
-      fetchReviewThreads(session.accessToken, currentRepo, pr.number),
-    ]);
-    return { files, threads };
+    try {
+      const [files, threads] = await Promise.all([
+        fetchPRFiles(session.accessToken, currentRepo, pr.number),
+        fetchReviewThreads(session.accessToken, currentRepo, pr.number),
+      ]);
+      log(`Loaded pull request #${pr.number}: ${files.length} file(s), ${threads.length} thread(s)`);
+      return { files, threads };
+    } catch (error) {
+      logError(`Failed to fetch data for pull request #${pr.number}`, error);
+      throw error;
+    }
   });
 
   const reviewTreeSubscription = reviewProvider.onDidChangeTreeData(() => {
@@ -266,6 +304,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             ? selected.fileNode.prNode
             : (selected instanceof CommentNode ? selected.threadNode.fileNode.prNode : undefined))));
     updateSelectedPRContext();
+    void syncComments();
   });
 
   async function navigateToThread(node: ThreadNode): Promise<void> {
@@ -281,10 +320,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (editor) {
         commentsCtrl.showThread(node.thread.id, editor.document.uri);
       }
-    } catch {}
+    } catch (error) {
+      logError(`Failed to navigate to ${node.thread.path}`, error);
+    }
   }
 
   async function loadPRs(options: { forceReloadCurrentPR?: boolean } = {}): Promise<void> {
+    log(`Loading pull requests${options.forceReloadCurrentPR ? ' (forced)' : ''}`);
     if (!session) {
       session = await getGitHubSession({ silent: true });
     }
@@ -293,8 +335,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       currentBranch = null;
       navIndex = 0;
       reviewProvider.updatePRs([]);
+      openCommentsProvider.update([]);
       await commentsCtrl.update([]);
       commentsCtrl.setChangedFiles([]);
+      log('Skipping pull request load: no GitHub session');
       return;
     }
 
@@ -304,8 +348,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       currentBranch = null;
       navIndex = 0;
       reviewProvider.updatePRs([]);
+      openCommentsProvider.update([]);
       await commentsCtrl.update([]);
       commentsCtrl.setChangedFiles([]);
+      log('Skipping pull request load: no workspace folder');
       return;
     }
 
@@ -318,9 +364,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ]);
       repo = parseGitHubRemote(remoteOut.trim());
       branch = branchOut.trim() || null;
-    } catch {
+      log(`Detected repository ${remoteOut.trim()} on branch ${branch ?? '(detached)'}`);
+    } catch (error) {
       repo = null;
       branch = null;
+      logError(`Git repository detection failed in ${cwd}`, error);
     }
 
     if (!repo) {
@@ -328,18 +376,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       currentBranch = null;
       navIndex = 0;
       reviewProvider.updatePRs([]);
+      openCommentsProvider.update([]);
       await commentsCtrl.update([]);
       commentsCtrl.setChangedFiles([]);
+      log('Skipping pull request load: no GitHub repository remote was detected');
       return;
     }
 
+    const previousBranch = currentBranch;
     currentRepo = repo;
     currentBranch = branch;
+    if (previousBranch && previousBranch !== branch) {
+      selectedPRNode = undefined;
+    }
 
+    log(`Fetching open pull requests for ${repo.owner}/${repo.repo}`);
     const prs = await fetchOpenPRs(session.accessToken, repo);
     reviewProvider.updatePRs(prs);
+    log(`Received ${prs.length} open pull request(s)`);
 
     const matchingPR = currentBranchNode();
+    log(
+      matchingPR
+        ? `Matched pull request #${matchingPR.pr.number} to branch ${currentBranch}`
+        : `No pull request matches branch ${currentBranch ?? '(detached)'}`,
+    );
     if (matchingPR && options.forceReloadCurrentPR) {
       matchingPR.loaded = false;
       matchingPR.fileNodes = [];
@@ -353,7 +414,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         await reviewProvider.loadPR(matchingPR);
         await treeView.reveal(matchingPR, { expand: true, focus: false, select: false });
-      } catch {}
+      } catch (error) {
+        logError(`Failed to load pull request #${matchingPR.number}`, error);
+      }
       reviewProvider.setBadge(treeView);
       await syncComments();
     }
@@ -367,6 +430,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       await loadPRs({ forceReloadCurrentPR: true });
     } catch (error) {
+      logError('Refresh failed', error);
       const message =
         error instanceof Error ? error.message : 'Unable to refresh GitHub review threads.';
       void vscode.window.showErrorMessage(message);
@@ -391,15 +455,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const openThreadCommand = vscode.commands.registerCommand(
     'githubReviewer.openThread',
-    async (node: ThreadNode) => {
+    async (node: ThreadNode | OpenCommentNode) => {
       try {
         await syncComments();
+        const pr = node instanceof OpenCommentNode ? node.pr : node.fileNode.prNode.pr;
         const editor = await openWorkspaceFile(node.thread.path, {
           anchor: getReviewThreadAnchor(node.thread),
           preserveFocus: false,
           missingMessage: `${node.thread.path} was not found locally. This thread may be on a deleted or renamed file.`,
           fallbackUrl: node.thread.comments[0]?.url,
-          remoteCandidates: getReviewThreadRefCandidates(node.thread, node.fileNode.prNode.pr),
+          remoteCandidates: getReviewThreadRefCandidates(node.thread, pr),
         });
         if (editor) {
           commentsCtrl.showThread(node.thread.id, editor.document.uri);
@@ -556,50 +621,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   );
 
-  const resolveNodeCommand = vscode.commands.registerCommand(
-    'githubReviewer.resolveThreadNode',
-    async (node: ThreadNode) => {
-      try {
-        if (!session) {
-          return;
-        }
-
-        await resolveThread(session.accessToken, node.thread.id);
-        reviewProvider.markThreadResolved(node.thread.id);
-        reviewProvider.refresh(node.fileNode.prNode);
-        reviewProvider.setBadge(treeView);
-        await syncComments();
-
-        reloadPRNode(node.fileNode.prNode).catch(() => {});
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to resolve GitHub review thread.';
-        void vscode.window.showErrorMessage(message);
-      }
-    },
-  );
-
-  const replyNodeCommand = vscode.commands.registerCommand(
-    'githubReviewer.replyToThreadNode',
-    async (node: ThreadNode) => {
-      try {
-        if (!session) {
-          return;
-        }
-
-        const text = await vscode.window.showInputBox({
-          prompt: `Reply to thread in ${node.fileNode.file.filename}`,
-          placeHolder: 'Your reply...',
-        });
-        if (!text) {
-          return;
-        }
-
-        await replyToThread(session.accessToken, node.thread.id, text);
-        await loadPRs({ forceReloadCurrentPR: true });
-      } catch {}
-    },
-  );
-
   const nextThreadCommand = vscode.commands.registerCommand('githubReviewer.nextThread', async () => {
     const nodes = reviewProvider.getAllThreadNodes();
     if (!nodes.length) {
@@ -623,6 +644,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     treeView,
+    openCommentsView,
     commentsCtrl,
     remoteFileProvider,
     reviewTreeSubscription,
@@ -638,28 +660,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showInTreeViewCommand,
     resolveCommand,
     replyCommand,
-    resolveNodeCommand,
-    replyNodeCommand,
     nextThreadCommand,
     prevThreadCommand,
   );
 
-  const gitExt = vscode.extensions.getExtension('vscode.git')?.exports as
-    | GitExtensionApi
-    | undefined;
-  const gitApi = gitExt?.getAPI(1);
+  const gitExt = vscode.extensions.getExtension<GitExtensionApi>('vscode.git');
+  log(gitExt ? `Git extension found (active: ${gitExt.isActive})` : 'Git extension not found');
+  const gitApi = gitExt ? (await gitExt.activate()).getAPI(1) : undefined;
+  log(gitApi ? `Git API activated (${gitApi.repositories.length} repository(s))` : 'Git API unavailable');
   if (gitApi?.repositories?.length) {
     const repo = gitApi.repositories[0];
     context.subscriptions.push(
       repo.state.onDidChange(() => {
         if (repo.state.HEAD?.name) {
-          loadPRs({ forceReloadCurrentPR: true }).catch(() => {});
+          loadPRs({ forceReloadCurrentPR: true }).catch((error) => {
+            logError('Branch-change reload failed', error);
+          });
         }
       }),
     );
   }
 
-  loadPRs().catch(() => {});
+  loadPRs().catch((error) => {
+    logError('Initial pull request load failed', error);
+  });
 }
 
 export function deactivate(): void {}

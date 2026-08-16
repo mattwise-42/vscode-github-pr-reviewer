@@ -2,12 +2,23 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Extension",
+      "name": "Run Extension with Mock GitHub API",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "${workspaceFolder}",
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--new-window"
+      ],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"],
-      "preLaunchTask": "npm: build"
+      "preLaunchTask": "Start mock GitHub API",
+      "postDebugTask": "Stop mock GitHub API",
+      "env": {
+        "GITHUB_REVIEWER_API_URL": "http://127.0.0.1:43123",
+        "GITHUB_REVIEWER_TEST_TOKEN": "test-token",
+        "GITHUB_REVIEWER_DEV_WORKSPACE": "${workspaceFolder}"
+      }
     }
   ]
 }
