@@ -1,20 +1,26 @@
 name: Publish VSIX
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - Bump extension version
+    types:
+      - completed
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -28,9 +34,29 @@ jobs:
       - name: Package VSIX
         run: npm run package
 
+      - name: Read package metadata
+        id: package
+        run: |
+          set -euo pipefail
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: github-pr-reviewer-vsix-${{ github.sha }}
+          name: github-pr-reviewer-vsix-${{ steps.package.outputs.sha }}
           path: '*.vsix'
           if-no-files-found: error
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.package.outputs.version }}
+          COMMIT_SHA: ${{ steps.package.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" "github-pr-reviewer-$VERSION.vsix" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$COMMIT_SHA" \
+            --title "v$VERSION" \
+            --generate-notes
