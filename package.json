@@ -4,6 +4,7 @@
   "description": "ADO-style unresolved PR review thread sidebar for GitHub",
   "version": "0.0.9",
   "publisher": "mattwise-42",
+  "icon": "resources/icon.png",
   "repository": {
     "url": "https://github.com/mattwise-42/vscode-github-pr-reviewer"
   },
@@ -23,7 +24,7 @@
         {
           "id": "github-reviewer",
           "title": "GitHub PR Reviewer",
-          "icon": "resources/icon.svg"
+          "icon": "resources/sidebar-icon.svg"
         }
       ]
     },

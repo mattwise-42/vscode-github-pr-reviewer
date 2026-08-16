@@ -1,5 +1,7 @@
 # GitHub PR Reviewer - VS Code Extension
 
+<p align="center"><img src="resources/icon.png" alt="GitHub PR Reviewer logo" width="160"></p>
+
 ADO-style unresolved PR review thread sidebar for VS Code. See every open review comment, navigate to the code, reply, and resolve — without leaving your editor.
 
 ## What it does
