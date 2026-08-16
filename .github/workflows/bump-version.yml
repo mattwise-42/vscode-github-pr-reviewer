@@ -50,11 +50,28 @@ jobs:
           set -euo pipefail
           git config user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
           git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
-          npm version "$VERSION_LEVEL" --no-git-tag-version
-          git add package.json package-lock.json
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          git commit -m "chore: bump extension version"
-          git push origin HEAD:main
+          while :; do
+            git fetch origin main
+            worktree="$(mktemp -d)"
+            git worktree add --detach "$worktree" origin/main
+            if ! (
+              set -euo pipefail
+              cd "$worktree"
+              npm version "$VERSION_LEVEL" --no-git-tag-version
+              git add package.json package-lock.json
+              if git diff --cached --quiet; then
+                echo "No changes to commit"
+                exit 0
+              fi
+              git commit -m "chore: bump extension version"
+            ); then
+              git worktree remove --force "$worktree"
+              exit 1
+            fi
+            if git -C "$worktree" push origin HEAD:main; then
+              git worktree remove --force "$worktree"
+              exit 0
+            fi
+            git worktree remove --force "$worktree"
+            sleep 2
+          done
