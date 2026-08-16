@@ -49,6 +49,58 @@ export class CommentNode {
   ) {}
 }
 
+export class OpenCommentNode {
+  constructor(
+    public readonly comment: ReviewComment,
+    public readonly thread: ReviewThread,
+    public readonly pr: PRSummary,
+  ) {}
+}
+
+export class OpenCommentsProvider implements vscode.TreeDataProvider<OpenCommentNode> {
+  private _onDidChangeTreeData = new vscode.EventEmitter<OpenCommentNode | undefined | void>();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+  private nodes: OpenCommentNode[] = [];
+
+  update(entries: Array<{ thread: ReviewThread; pr: PRSummary }>): void {
+    this.nodes = entries
+      .filter(({ thread }) => !thread.isResolved)
+      .flatMap(({ thread, pr }) =>
+        thread.comments.map((comment) => new OpenCommentNode(comment, thread, pr)),
+      )
+      .sort((left, right) => {
+        const pathCompare = left.thread.path.localeCompare(right.thread.path);
+        if (pathCompare !== 0) {
+          return pathCompare;
+        }
+
+        return (getReviewThreadLine(left.thread) ?? 0) - (getReviewThreadLine(right.thread) ?? 0);
+      });
+    this._onDidChangeTreeData.fire();
+  }
+
+  getTreeItem(element: OpenCommentNode): vscode.TreeItem {
+    const line = getReviewThreadLine(element.thread);
+    const preview = element.comment.body.split('\n')[0].slice(0, 100) || '(no comment)';
+    const item = new vscode.TreeItem(preview, vscode.TreeItemCollapsibleState.None);
+    item.description = `${element.comment.author.login} - ${element.thread.path}${line ? `:${line}` : ''}`;
+    item.tooltip = new vscode.MarkdownString(
+      `**${element.comment.author.login}** on \`${element.thread.path}${line ? `:${line}` : ''}\`\n\n${element.comment.body}`,
+    );
+    item.contextValue = 'open-comment';
+    item.command = {
+      command: 'githubReviewer.openThread',
+      title: 'Open thread',
+      arguments: [element],
+    };
+    return item;
+  }
+
+  getChildren(): OpenCommentNode[] {
+    return this.nodes;
+  }
+}
+
 export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNode> {
   private _onDidChangeTreeData = new vscode.EventEmitter<ReviewTreeNode | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;

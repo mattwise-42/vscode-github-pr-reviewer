@@ -1,6 +1,16 @@
 const http = require('node:http');
+const { execFileSync } = require('node:child_process');
 
 const port = Number(process.env.GITHUB_REVIEWER_MOCK_PORT ?? 43123);
+const mockFile = process.env.GITHUB_REVIEWER_MOCK_FILE ?? 'src/fixture.ts';
+const configuredBranch = process.env.GITHUB_REVIEWER_MOCK_BRANCH;
+const mockBranch = configuredBranch === 'auto'
+  ? execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
+  : configuredBranch ?? 'feature/review';
+
+if (!mockBranch) {
+  throw new Error('Unable to determine the mock GitHub branch');
+}
 
 const prs = [
   {
@@ -8,7 +18,7 @@ const prs = [
     node_id: 'PR_node_42',
     title: 'Fixture PR',
     draft: false,
-    head: { ref: 'feature/review' },
+    head: { ref: mockBranch },
     base: { ref: 'main' },
   },
   {
@@ -26,7 +36,7 @@ const threads = new Map([
     id: 'thread-42',
     isResolved: false,
     isOutdated: false,
-    path: 'src/fixture.ts',
+    path: mockFile,
     line: 2,
     startLine: 2,
     diffSide: 'RIGHT',
@@ -46,11 +56,35 @@ const threads = new Map([
       originalCommit: { oid: 'fixture-commit-42' },
     }],
   }],
+  ['thread-42-resolved', {
+    id: 'thread-42-resolved',
+    isResolved: true,
+    isOutdated: false,
+    path: mockFile,
+    line: 3,
+    startLine: 3,
+    diffSide: 'RIGHT',
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [{
+    id: 'comment-42-resolved',
+    body: 'This fixture thread is already resolved.',
+    author: { login: 'test-user', avatarUrl: '' },
+    createdAt: '2026-08-15T18:01:00Z',
+    url: 'http://github.test/pull/42#discussion_r42_resolved',
+    line: 3,
+    startLine: 3,
+    originalLine: 3,
+    originalStartLine: 3,
+    commit: { oid: 'fixture-commit-42' },
+    originalCommit: { oid: 'fixture-commit-42' },
+    }],
+  }],
   ['thread-43', {
     id: 'thread-43',
     isResolved: false,
     isOutdated: false,
-    path: 'src/fixture.ts',
+    path: mockFile,
     line: 2,
     startLine: 2,
     diffSide: 'RIGHT',
@@ -68,6 +102,30 @@ const threads = new Map([
       originalStartLine: 2,
       commit: { oid: 'fixture-commit-43' },
       originalCommit: { oid: 'fixture-commit-43' },
+    }],
+  }],
+  ['thread-43-resolved', {
+    id: 'thread-43-resolved',
+    isResolved: true,
+    isOutdated: false,
+    path: mockFile,
+    line: 3,
+    startLine: 3,
+    diffSide: 'RIGHT',
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [{
+    id: 'comment-43-resolved',
+    body: 'This second fixture thread is already resolved.',
+    author: { login: 'test-user', avatarUrl: '' },
+    createdAt: '2026-08-15T18:01:00Z',
+    url: 'http://github.test/pull/43#discussion_r43_resolved',
+    line: 3,
+    startLine: 3,
+    originalLine: 3,
+    originalStartLine: 3,
+    commit: { oid: 'fixture-commit-43' },
+    originalCommit: { oid: 'fixture-commit-43' },
     }],
   }],
 ]);
@@ -94,7 +152,8 @@ function readBody(request) {
 
 function threadForPullRequest(number) {
   return [...threads.values()]
-    .filter((thread) => thread.id === `thread-${number}`)
+    .filter((thread) =>
+      thread.id === `thread-${number}` || thread.id.startsWith(`thread-${number}-`))
     .map((thread) => {
       const clone = structuredClone(thread);
       clone.comments = { nodes: clone.comments };
@@ -170,17 +229,20 @@ const server = http.createServer(async (request, response) => {
   }
 
   const requestUrl = new URL(request.url, `http://127.0.0.1:${port}`);
-  if (request.method === 'GET' && requestUrl.pathname === '/repos/test-owner/test-repo/pulls') {
+  if (
+    request.method === 'GET'
+    && /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(requestUrl.pathname)
+  ) {
     writeJson(response, 200, prs);
     return;
   }
 
   if (
     request.method === 'GET'
-    && /^\/repos\/test-owner\/test-repo\/pulls\/\d+\/files$/.test(requestUrl.pathname)
+    && /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/files$/.test(requestUrl.pathname)
   ) {
     writeJson(response, 200, [{
-      filename: 'src/fixture.ts',
+      filename: mockFile,
       status: 'modified',
       additions: 1,
       deletions: 0,

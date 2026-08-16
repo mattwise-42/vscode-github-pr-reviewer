@@ -56,7 +56,7 @@ export class CommentsController implements vscode.Disposable {
       return;
     }
 
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const workspaceRoot = getWorkspaceRoot();
     const fallbackUri = workspaceRoot
       ? vscode.Uri.file(`${workspaceRoot}/${reviewThread.path}`)
       : undefined;
@@ -100,7 +100,7 @@ export class CommentsController implements vscode.Disposable {
     this._threadUrlMap.clear();
     this._reviewThreads.clear();
 
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) {
       return;
     }
@@ -172,6 +172,11 @@ export class CommentsController implements vscode.Disposable {
 
     return vsThread;
   }
+}
+
+function getWorkspaceRoot(): string | undefined {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    ?? process.env.GITHUB_REVIEWER_DEV_WORKSPACE;
 }
 
 function createCommentBody(body: string, url: string): vscode.MarkdownString {

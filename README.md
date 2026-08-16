@@ -5,9 +5,11 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 ## What it does
 
 - **Sidebar panel** in the SCM view lists all unresolved review threads for the current branch's open PR, grouped by folder and file
+- **Open Comments** view shows all comments from unresolved threads in a flat list
 - **Click a thread** to jump to that line in the file
 - **Inline comment threads** appear in the gutter (skipped automatically if the GitHub Pull Requests extension is already showing them)
 - **Reply** from the inline thread's built-in reply box
+- Tree-view comments open the inline thread; replies are available there only
 - **Resolve** with the ✓ button on each thread title
 - **Badge** on the sidebar icon shows the unresolved thread count
 - **Show in GitHub PR Reviewer** jumps from the Explorer or editor tab to the current file in the review tree
@@ -44,6 +46,8 @@ npm run build
 ```
 
 Then press **F5** in VS Code to open an Extension Development Host with the extension loaded.
+
+For diagnostics, open **View → Output** and select **GitHub PR Reviewer**.
 
 ## Test
 
