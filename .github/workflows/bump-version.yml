@@ -16,10 +16,16 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   bump:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.merged == true &&
+        !startsWith(github.event.pull_request.head.ref, 'chore/version-bump-')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -34,28 +40,23 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Commit version bump
+      - name: Create version bump pull request
+        env:
+          BRANCH_NAME: chore/version-bump-${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          while :; do
-            git fetch origin main
-            worktree="$(mktemp -d)"
-            git worktree add --detach "$worktree" origin/main
-            if ! (
-              cd "$worktree" &&
-              npm version "$VERSION_LEVEL" --no-git-tag-version &&
-              git add package.json package-lock.json &&
-              git commit -m "chore: bump extension version to $(node -p "require('./package.json').version")"
-            ); then
-              git worktree remove --force "$worktree"
-              exit 1
-            fi
-            if git -C "$worktree" push origin HEAD:main; then
-              git worktree remove --force "$worktree"
-              exit 0
-            fi
-            git worktree remove --force "$worktree"
-            sleep 2
-          done
+          git switch --create "$BRANCH_NAME"
+          npm version "$VERSION_LEVEL" --no-git-tag-version
+          version="$(node -p "require('./package.json').version")"
+          git add package.json package-lock.json
+          git commit -m "chore: bump extension version to $version"
+          git push --set-upstream origin "$BRANCH_NAME"
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore: bump extension version to $version" \
+            --body "Automated version bump after a merged pull request."
