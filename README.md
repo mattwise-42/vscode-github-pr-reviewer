@@ -8,10 +8,13 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 
 - **Sidebar panel** in the SCM view lists all unresolved review threads for the current branch's open PR, grouped by folder and file
 - **Open Comments** view shows all comments from unresolved threads in a flat list
-- **Click a thread** to jump to that line in the file
+- **Click a thread** to open a diff from the comment version to the current PR head and mark the original line
+- **Comment diff layout** can be toggled between side-by-side and inline from the diff editor's top-right action
+- **Inline diffs** keep the comment preview in the diff title
+- **Comment diffs** compare the code version where a comment was left with the current PR head
 - **Inline comment threads** appear in the gutter (skipped automatically if the GitHub Pull Requests extension is already showing them)
 - **Reply** from the inline thread's built-in reply box
-- Tree-view comments open the inline thread; replies are available there only
+- Tree-view comments open the historical diff; replies remain available in the inline thread
 - **Resolve** with the ✓ button on each thread title
 - **Badge** on the sidebar icon shows the unresolved thread count
 - **Show in GitHub PR Reviewer** jumps from the Explorer or editor tab to the current file in the review tree
@@ -72,9 +75,10 @@ The end-to-end suite launches an isolated VS Code Extension Development Host and
 1. Open a repo folder in VS Code that has an open PR on GitHub
 2. The **PR Review Threads** panel appears in the SCM sidebar (Source Control view)
 3. The extension auto-detects the PR for your current branch and loads unresolved threads
-4. Click any thread in the sidebar to navigate to that file and line
+4. Click any thread in the sidebar to open the historical/current diff and locate the original comment line
 5. Use the inline comment UI to **reply** or click **✓** to **resolve**
-6. Hit the **↺ refresh** button in the panel header to reload (or switch branches to auto-reload)
+6. Use **Toggle Inline/Side-by-Side Diff** in the diff editor's top-right actions to change the layout
+7. Hit the **↺ refresh** button in the panel header to reload (or switch branches to auto-reload)
 
 If you're not signed into GitHub, the first **Refresh** will prompt you to authenticate via VS Code's built-in GitHub auth flow.
 

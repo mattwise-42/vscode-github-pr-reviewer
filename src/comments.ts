@@ -16,10 +16,10 @@ export class CommentsController implements vscode.Disposable {
       'github-reviewer',
       'GitHub Review Threads',
     );
-    this._ctrl.options = { placeHolder: 'Reply to this review thread...' };
+    this._ctrl.options = { placeHolder: 'Add a review comment...' };
     this._ctrl.commentingRangeProvider = {
       provideCommentingRanges: (document: vscode.TextDocument): vscode.Range[] => {
-        const relPath = vscode.workspace.asRelativePath(document.uri, false);
+        const relPath = getCommentFilePath(document.uri);
         if (!this._changedFiles.has(relPath)) {
           return [];
         }
@@ -38,6 +38,11 @@ export class CommentsController implements vscode.Disposable {
     return this._threadIdMap.get(vsThread);
   }
 
+  getReviewThread(vsThread: vscode.CommentThread): ReviewThread | undefined {
+    const threadId = this._threadIdMap.get(vsThread);
+    return threadId ? this._reviewThreads.get(threadId) : undefined;
+  }
+
   getThreadUrl(vsThread: vscode.CommentThread): string | undefined {
     return this._threadUrlMap.get(vsThread);
   }
@@ -50,7 +55,11 @@ export class CommentsController implements vscode.Disposable {
     this.showThread(githubThreadId);
   }
 
-  showThread(githubThreadId: string, uri?: vscode.Uri): void {
+  showThread(
+    githubThreadId: string,
+    uri?: vscode.Uri,
+    options: { preferOriginal?: boolean } = {},
+  ): void {
     const reviewThread = this._reviewThreads.get(githubThreadId);
     if (!reviewThread || !this._ctrl) {
       return;
@@ -70,7 +79,7 @@ export class CommentsController implements vscode.Disposable {
       vsThread?.dispose();
       this._threadIdMap.delete(vsThread as vscode.CommentThread);
       this._threadUrlMap.delete(vsThread as vscode.CommentThread);
-      vsThread = this.createThread(reviewThread, targetUri);
+      vsThread = this.createThread(reviewThread, targetUri, options);
     }
 
     if (vsThread) {
@@ -132,12 +141,16 @@ export class CommentsController implements vscode.Disposable {
     this._ctrl?.dispose();
   }
 
-  private createThread(reviewThread: ReviewThread, uri: vscode.Uri): vscode.CommentThread {
+  private createThread(
+    reviewThread: ReviewThread,
+    uri: vscode.Uri,
+    options: { preferOriginal?: boolean } = {},
+  ): vscode.CommentThread {
     if (!this._ctrl) {
       throw new Error('Comment controller is not initialized.');
     }
 
-    const anchor = getReviewThreadAnchor(reviewThread);
+    const anchor = getReviewThreadAnchor(reviewThread, options);
     const startLine = anchor.startLine != null ? Math.max(0, anchor.startLine - 1) : 0;
     const endLine = anchor.endLine != null ? Math.max(0, anchor.endLine - 1) : startLine;
     const range = new vscode.Range(startLine, 0, endLine, 0);
@@ -177,6 +190,12 @@ export class CommentsController implements vscode.Disposable {
 function getWorkspaceRoot(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
     ?? process.env.GITHUB_REVIEWER_DEV_WORKSPACE;
+}
+
+function getCommentFilePath(uri: vscode.Uri): string {
+  return uri.scheme === 'github-reviewer-remote'
+    ? uri.path.replace(/^\/+/, '')
+    : vscode.workspace.asRelativePath(uri, false);
 }
 
 function createCommentBody(body: string, url: string): vscode.MarkdownString {

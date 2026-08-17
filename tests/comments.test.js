@@ -175,7 +175,7 @@ test('CommentsController creates expanded VS Code threads, exposes commenting ra
   assert.equal(controller.isEnabled(), true);
   assert.equal(env.createCommentControllerCalls, 1);
   assert.deepEqual(env.commentController.options, {
-    placeHolder: 'Reply to this review thread...',
+    placeHolder: 'Add a review comment...',
   });
   assert.ok(env.commentController.commentingRangeProvider);
 
@@ -203,6 +203,7 @@ test('CommentsController creates expanded VS Code threads, exposes commenting ra
   assert.equal(thread.collapsibleState, 'expanded');
   assert.equal(thread.contextValue, 'unresolved');
   assert.equal(controller.getThreadId(thread), 'thread-node-1');
+  assert.equal(controller.getReviewThread(thread)?.id, 'thread-node-1');
   assert.equal(
     controller.getThreadUrl(thread),
     'https://github.com/octo/reviewer/pull/42#discussion_r1',
@@ -372,4 +373,55 @@ test('CommentsController falls back to original comment line when thread line is
   const thread = env.createdThreads[0];
   assert.equal(thread.range.start.line, 22);
   assert.equal(thread.range.end.line, 22);
+});
+
+test('CommentsController uses the original range for historical diff threads', async () => {
+  const env = createVscodeMock();
+  const { CommentsController } = loadCommentsModule(env.vscode);
+  const controller = new CommentsController();
+
+  await controller.update([{
+    id: 'thread-versioned',
+    path: 'src/github.ts',
+    line: 30,
+    startLine: 28,
+    diffSide: 'RIGHT',
+    isResolved: false,
+    isOutdated: true,
+    viewerCanResolve: true,
+    viewerCanReply: true,
+    comments: [{
+      id: 'comment-versioned',
+      body: 'Compare this change',
+      author: { login: 'octocat', avatarUrl: '' },
+      createdAt: '2026-06-25T10:00:00Z',
+      url: 'https://github.com/octo/reviewer/pull/42#discussion_r5',
+      line: 30,
+      startLine: 28,
+      originalLine: 12,
+      originalStartLine: 10,
+      commitOid: 'current-sha',
+      originalCommitOid: 'original-sha',
+    }],
+  }]);
+
+  controller.showThread('thread-versioned', {
+    toString() {
+      return 'github-reviewer-remote:/src/github.ts?ref=original-sha';
+    },
+  }, { preferOriginal: true });
+
+  const historicalThread = env.createdThreads[1];
+  assert.equal(historicalThread.range.start.line, 9);
+  assert.equal(historicalThread.range.end.line, 11);
+
+  controller.showThread('thread-versioned', {
+    toString() {
+      return 'github-reviewer-remote:/src/github.ts?ref=current-sha';
+    },
+  });
+
+  const inlineThread = env.createdThreads[2];
+  assert.equal(inlineThread.range.start.line, 27);
+  assert.equal(inlineThread.range.end.line, 29);
 });
