@@ -73,7 +73,7 @@
       },
       {
         "command": "githubReviewer.replyToThread",
-        "title": "Reply to Thread",
+        "title": "Post Comment",
         "category": "GitHub PR Reviewer"
       },
       {
@@ -92,6 +92,12 @@
         "command": "githubReviewer.openOriginalComment",
         "title": "Open on GitHub",
         "icon": "$(link-external)",
+        "category": "GitHub PR Reviewer"
+      },
+      {
+        "command": "githubReviewer.toggleCommentDiffView",
+        "title": "Toggle Inline/Side-by-Side Diff",
+        "icon": "$(compare-changes)",
         "category": "GitHub PR Reviewer"
       },
       {
@@ -146,6 +152,13 @@
           "command": "githubReviewer.refresh",
           "when": "view == githubReviewer.reviewView || view == githubReviewer.openCommentsView",
           "group": "navigation@3"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "githubReviewer.toggleCommentDiffView",
+          "when": "githubReviewer.commentDiffActive && resourceScheme == github-reviewer-remote",
+          "group": "navigation@4"
         }
       ],
       "comments/commentThread/title": [

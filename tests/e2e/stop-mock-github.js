@@ -29,7 +29,11 @@ async function stopMockGitHub() {
   await fs.rm(pidPath, { force: true });
 }
 
-stopMockGitHub().catch((error) => {
-  process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  stopMockGitHub().catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { stopMockGitHub };

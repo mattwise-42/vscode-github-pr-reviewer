@@ -93,7 +93,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
           node_id: 'PR_node_42',
           title: 'Thread sidebar',
           draft: false,
-          head: { ref: 'feature/thread-sidebar' },
+          head: { ref: 'feature/thread-sidebar', sha: 'head-sha-42' },
           base: { ref: 'main' },
         },
         {
@@ -101,7 +101,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
           node_id: 'PR_node_43',
           title: 'Docs polish',
           draft: true,
-          head: { ref: 'docs/polish' },
+          head: { ref: 'docs/polish', sha: 'head-sha-43' },
           base: { ref: 'main' },
         },
       ],
@@ -120,6 +120,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
         nodeId: 'PR_node_42',
         title: 'Thread sidebar',
         headRefName: 'feature/thread-sidebar',
+        headSha: 'head-sha-42',
         baseRefName: 'main',
         isDraft: false,
       },
@@ -128,6 +129,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
         nodeId: 'PR_node_43',
         title: 'Docs polish',
         headRefName: 'docs/polish',
+        headSha: 'head-sha-43',
         baseRefName: 'main',
         isDraft: true,
       },
@@ -135,6 +137,45 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
   } finally {
     restoreFetch();
   }
+});
+
+test('fetchOpenPRs includes the current head commit for comment diffs', async () => {
+  const { fetchOpenPRs } = loadGithubModule();
+  const restoreFetch = mockFetch(async () => createResponse({
+    json: [{
+      number: 42,
+      node_id: 'PR_node_42',
+      title: 'Thread sidebar',
+      draft: false,
+      head: { ref: 'feature/thread-sidebar', sha: 'head-sha-42' },
+      base: { ref: 'main' },
+    }],
+  }));
+
+  try {
+    const [pr] = await fetchOpenPRs?.(
+      'token-123',
+      { owner: 'octo', repo: 'reviewer' },
+    );
+
+    assert.equal(pr.headSha, 'head-sha-42');
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('getReviewCommentVersion prefers the original commit where a comment was left', () => {
+  const { getReviewCommentVersion } = loadGithubModule();
+
+  assert.equal(
+    getReviewCommentVersion?.({ originalCommitOid: 'original-sha', commitOid: 'current-sha' }),
+    'original-sha',
+  );
+  assert.equal(
+    getReviewCommentVersion?.({ originalCommitOid: null, commitOid: 'current-sha' }),
+    'current-sha',
+  );
+  assert.equal(getReviewCommentVersion?.({ originalCommitOid: null, commitOid: null }), null);
 });
 
 test('GitHub API requests use the configured API base URL', async () => {
@@ -154,7 +195,7 @@ test('GitHub API requests use the configured API base URL', async () => {
           node_id: 'PR_node_42',
           title: 'Thread sidebar',
           draft: false,
-          head: { ref: 'feature/thread-sidebar' },
+          head: { ref: 'feature/thread-sidebar', sha: 'head-sha-42' },
           base: { ref: 'main' },
         }],
       });

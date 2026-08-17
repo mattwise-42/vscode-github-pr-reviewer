@@ -21,13 +21,18 @@ if (!mockBranch) {
   throw new Error('Unable to determine the mock GitHub branch');
 }
 
+const pr42CommentCommit = '1111111111111111111111111111111111111111';
+const pr42HeadCommit = '2222222222222222222222222222222222222222';
+const pr43CommentCommit = '3333333333333333333333333333333333333333';
+const pr43HeadCommit = '4444444444444444444444444444444444444444';
+
 const prs = [
   {
     number: 42,
     node_id: 'PR_node_42',
     title: 'Fixture PR',
     draft: false,
-    head: { ref: mockBranch },
+    head: { ref: mockBranch, sha: pr42HeadCommit },
     base: { ref: 'main' },
   },
   {
@@ -35,7 +40,7 @@ const prs = [
     node_id: 'PR_node_43',
     title: 'Second Fixture PR',
     draft: false,
-    head: { ref: 'feature/second' },
+    head: { ref: 'feature/second', sha: pr43HeadCommit },
     base: { ref: 'main' },
   },
 ];
@@ -61,8 +66,8 @@ const threads = new Map([
       startLine: 2,
       originalLine: 2,
       originalStartLine: 2,
-      commit: { oid: 'fixture-commit-42' },
-      originalCommit: { oid: 'fixture-commit-42' },
+      commit: { oid: pr42CommentCommit },
+      originalCommit: { oid: pr42CommentCommit },
     }],
   }],
   ['thread-42-resolved', {
@@ -85,8 +90,8 @@ const threads = new Map([
     startLine: 3,
     originalLine: 3,
     originalStartLine: 3,
-    commit: { oid: 'fixture-commit-42' },
-    originalCommit: { oid: 'fixture-commit-42' },
+    commit: { oid: pr42CommentCommit },
+    originalCommit: { oid: pr42CommentCommit },
     }],
   }],
   ['thread-42-extra', {
@@ -109,8 +114,8 @@ const threads = new Map([
       startLine: 6,
       originalLine: 6,
       originalStartLine: 6,
-      commit: { oid: 'fixture-commit-42' },
-      originalCommit: { oid: 'fixture-commit-42' },
+      commit: { oid: pr42CommentCommit },
+      originalCommit: { oid: pr42CommentCommit },
     }],
   }],
   ['thread-42-resolved-extra', {
@@ -133,8 +138,8 @@ const threads = new Map([
       startLine: 4,
       originalLine: 4,
       originalStartLine: 4,
-      commit: { oid: 'fixture-commit-42' },
-      originalCommit: { oid: 'fixture-commit-42' },
+      commit: { oid: pr42CommentCommit },
+      originalCommit: { oid: pr42CommentCommit },
     }],
   }],
   ['thread-43', {
@@ -157,8 +162,8 @@ const threads = new Map([
       startLine: 2,
       originalLine: 2,
       originalStartLine: 2,
-      commit: { oid: 'fixture-commit-43' },
-      originalCommit: { oid: 'fixture-commit-43' },
+      commit: { oid: pr43CommentCommit },
+      originalCommit: { oid: pr43CommentCommit },
     }],
   }],
   ['thread-43-resolved', {
@@ -181,8 +186,8 @@ const threads = new Map([
     startLine: 3,
     originalLine: 3,
     originalStartLine: 3,
-    commit: { oid: 'fixture-commit-43' },
-    originalCommit: { oid: 'fixture-commit-43' },
+    commit: { oid: pr43CommentCommit },
+    originalCommit: { oid: pr43CommentCommit },
     }],
   }],
   ['thread-43-extra', {
@@ -205,8 +210,8 @@ const threads = new Map([
       startLine: 6,
       originalLine: 6,
       originalStartLine: 6,
-      commit: { oid: 'fixture-commit-43' },
-      originalCommit: { oid: 'fixture-commit-43' },
+      commit: { oid: pr43CommentCommit },
+      originalCommit: { oid: pr43CommentCommit },
     }],
   }],
   ['thread-43-resolved-extra', {
@@ -229,8 +234,8 @@ const threads = new Map([
       startLine: 4,
       originalLine: 4,
       originalStartLine: 4,
-      commit: { oid: 'fixture-commit-43' },
-      originalCommit: { oid: 'fixture-commit-43' },
+      commit: { oid: pr43CommentCommit },
+      originalCommit: { oid: pr43CommentCommit },
     }],
   }],
 ]);
@@ -264,6 +269,17 @@ function threadForPullRequest(number) {
       clone.comments = { nodes: clone.comments };
       return clone;
     });
+}
+
+const fileContentsByRef = new Map([
+  [pr42CommentCommit, 'export const fixture = "comment version";\nexport const reviewLine = true;\n'],
+  [pr42HeadCommit, 'export const fixture = "current version";\nexport const reviewLine = false;\n'],
+  [pr43CommentCommit, 'export const fixture = "second comment version";\nexport const reviewLine = true;\n'],
+  [pr43HeadCommit, 'export const fixture = "second current version";\nexport const reviewLine = false;\n'],
+]);
+
+function fileContentForRef(ref) {
+  return fileContentsByRef.get(ref) ?? null;
 }
 
 function handleGraphQL(payload) {
@@ -353,6 +369,25 @@ const server = http.createServer(async (request, response) => {
       deletions: 0,
       changes: 1,
     })));
+    return;
+  }
+
+  if (
+    request.method === 'GET'
+    && /^\/repos\/[^/]+\/[^/]+\/contents\/.+$/.test(requestUrl.pathname)
+  ) {
+    const ref = requestUrl.searchParams.get('ref');
+    const content = ref ? fileContentForRef(ref) : null;
+    if (content == null) {
+      writeJson(response, 404, { message: 'Not found' });
+      return;
+    }
+
+    writeJson(response, 200, {
+      type: 'file',
+      encoding: 'base64',
+      content: Buffer.from(content, 'utf8').toString('base64'),
+    });
     return;
   }
 

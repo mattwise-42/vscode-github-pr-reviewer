@@ -45,6 +45,7 @@ export interface PRSummary {
   nodeId: string;
   title: string;
   headRefName: string;
+  headSha: string;
   baseRefName: string;
   isDraft: boolean;
 }
@@ -149,6 +150,7 @@ interface RestOpenPullRequest extends RestPullRequest {
   draft: boolean;
   head: {
     ref: string;
+    sha: string;
   };
   base: {
     ref: string;
@@ -343,6 +345,12 @@ export function getReviewThreadAnchor(
 
 export function getReviewThreadLine(thread: ReviewThread): number | null {
   return getReviewThreadAnchor(thread).endLine;
+}
+
+export function getReviewCommentVersion(
+  comment: Pick<ReviewComment, 'commitOid' | 'originalCommitOid'>,
+): string | null {
+  return comment.originalCommitOid ?? comment.commitOid ?? null;
 }
 
 export function getReviewThreadRefCandidates(
@@ -593,6 +601,7 @@ export async function fetchOpenPRs(token: string, repo: GitHubRepo): Promise<PRS
     nodeId: pr.node_id,
     title: pr.title,
     headRefName: pr.head.ref,
+    headSha: pr.head.sha,
     baseRefName: pr.base.ref,
     isDraft: pr.draft,
   }));

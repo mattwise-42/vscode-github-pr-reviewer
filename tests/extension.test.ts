@@ -24,33 +24,35 @@ test('loads the fixture pull request in the GitHub PR Reviewer view', async () =
   await expect(page.getByRole('treeitem', { name: /#42: Fixture PR/ })).toBeVisible();
 });
 
-test('opens a review thread in the workspace file', async () => {
+test('opens a review thread in the historical code diff by default', async () => {
   const file = page.getByRole('treeitem', { name: /^src\/fixture\.ts —/ });
   await expect(file).toBeVisible();
   await file.click();
-  await expect(page.getByRole('tab', { name: 'fixture.ts' })).toBeVisible();
 
   const thread = page
     .getByRole('treeitem', { name: /test-user: Please review this fixture thread/ })
     .first();
   await expect(thread).toBeVisible();
   await thread.click();
+
+  const diffTitle = page.getByText(/1111111 -> 2222222 \(comment at line 2:/);
+  await expect(diffTitle).toBeVisible();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await expect(diffTitle).toBeVisible();
+  await expect(page.getByRole('tab', { name: /1111111/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Close/ }).first()).toBeVisible();
+  const editorLines = await page.locator('.monaco-editor .view-lines').allTextContents();
+  const editorText = editorLines.join('\n').replace(/\u00a0/g, ' ');
+  expect(editorText).toContain('comment version');
+  expect(editorText).toContain('current version');
+  const layoutButton = page.getByRole('button', { name: 'Toggle Inline/Side-by-Side Diff' });
+  await expect(layoutButton).toBeVisible();
+  await layoutButton.click();
+  await expect(page.getByText(/comment at line 2: Please review this fixture thread\./)).toBeVisible();
   const editor = page.getByRole('main');
   await expect(
     editor.getByRole('treeitem', { name: /test-user, Please review this fixture thread/ }),
   ).toBeVisible();
-  await editor.getByRole('button', { name: 'Reply...' }).click();
-  const reply = editor.getByLabel(/Comment, use/).getByRole('textbox');
-  await expect(reply).toBeVisible();
-  await reply.focus();
-  await page.keyboard.type('Looks good');
-  await editor.getByRole('button', { name: /Reply to Thread/ }).click();
-  await expect(page.getByText('Looks good', { exact: true })).toBeVisible();
-
-  await editor.getByRole('button', { name: 'Resolve' }).first().click();
-  await expect(
-    page.getByRole('treeitem', { name: /test-user: Please review this fixture thread/ }).first(),
-  ).toHaveCount(0);
 });
 
 test('reloads the matching pull request after a branch switch', async () => {

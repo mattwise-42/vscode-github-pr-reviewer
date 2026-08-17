@@ -7,11 +7,14 @@ import {
   fetchOpenPRs,
   fetchPRFiles,
   fetchReviewThreads,
+  getReviewCommentVersion,
   getReviewThreadAnchor,
   getReviewThreadRefCandidates,
   GitHubRepo,
   parseGitHubRemote,
   PRSummary,
+  ReviewComment,
+  ReviewThread,
   replyToThread,
   resolveThread,
 } from './github';
@@ -47,6 +50,15 @@ interface GitApi {
 
 interface GitExtensionApi {
   getAPI(version: number): GitApi;
+}
+
+interface ActiveCommentDiff {
+  threadId: string;
+  thread: ReviewThread;
+  comment: ReviewComment;
+  commentUri: vscode.Uri;
+  currentUri: vscode.Uri;
+  sideBySide: boolean;
 }
 
 async function getGitHubSession(
@@ -95,6 +107,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let currentBranch: string | null = null;
   let navIndex = 0;
   let selectedPRNode: PRNode | undefined;
+  let activeCommentDiff: ActiveCommentDiff | undefined;
 
   const reviewProvider = new ReviewTreeProvider();
   const treeView = vscode.window.createTreeView<ReviewTreeNode>('githubReviewer.reviewView', {
@@ -153,13 +166,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     for (const candidate of candidates) {
-      const content = await fetchFileContent(session.accessToken, currentRepo, candidate.ref, relPath);
-      if (content == null) {
+      const uri = await fetchRemoteFileUri(relPath, candidate.ref);
+      if (!uri) {
         continue;
       }
 
-      const uri = remoteFileUri(relPath, candidate.ref);
-      remoteFileContents.set(uri.toString(), content);
       const doc = await vscode.workspace.openTextDocument(uri);
       const startLine = candidate.startLine != null ? Math.max(0, candidate.startLine - 1) : 0;
       const endLine = candidate.endLine != null ? Math.max(0, candidate.endLine - 1) : startLine;
@@ -175,6 +186,119 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     return undefined;
+  }
+
+  async function fetchRemoteFileUri(relPath: string, ref: string): Promise<vscode.Uri | undefined> {
+    if (!session || !currentRepo) {
+      return undefined;
+    }
+
+    const content = await fetchFileContent(session.accessToken, currentRepo, ref, relPath);
+    if (content == null) {
+      return undefined;
+    }
+
+    const uri = remoteFileUri(relPath, ref);
+    remoteFileContents.set(uri.toString(), content);
+    return uri;
+  }
+
+  async function openCommentDiff(
+    target: ThreadNode | CommentNode | OpenCommentNode | vscode.CommentThread,
+  ): Promise<vscode.Uri | undefined> {
+    const diffTarget = getCommentDiffTarget(target);
+    if (!diffTarget) {
+      return undefined;
+    }
+
+    if (!session || !currentRepo) {
+      return undefined;
+    }
+
+    const commentRef = getReviewCommentVersion(diffTarget.comment);
+    if (!commentRef) {
+      return undefined;
+    }
+
+    const currentRef = diffTarget.pr.headSha ?? diffTarget.pr.headRefName;
+    const [commentUri, currentUri] = await Promise.all([
+      fetchRemoteFileUri(diffTarget.thread.path, commentRef),
+      fetchRemoteFileUri(diffTarget.thread.path, currentRef),
+    ]);
+    if (!commentUri || !currentUri) {
+      return undefined;
+    }
+
+    const originalAnchor = getReviewThreadAnchor(diffTarget.thread, { preferOriginal: true });
+    const commentPreview = diffTarget.comment.body.split('\n')[0].slice(0, 80);
+    const commentLine = originalAnchor.endLine != null
+      ? ` (comment at line ${originalAnchor.endLine}${commentPreview ? `: ${commentPreview}` : ''})`
+      : '';
+    activeCommentDiff = {
+      threadId: diffTarget.thread.id,
+      thread: diffTarget.thread,
+      comment: diffTarget.comment,
+      commentUri,
+      currentUri,
+      sideBySide: true,
+    };
+    void vscode.commands.executeCommand('setContext', 'githubReviewer.commentDiffActive', true);
+    commentsCtrl.showThread(diffTarget.thread.id, commentUri, { preferOriginal: true });
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      commentUri,
+      currentUri,
+      `${diffTarget.thread.path}: ${commentRef.slice(0, 7)} -> ${currentRef.slice(0, 7)}${commentLine}`,
+      {
+        preserveFocus: false,
+        preview: false,
+        ...(originalAnchor.startLine != null && originalAnchor.endLine != null
+          ? {
+              selection: new vscode.Range(
+                Math.max(0, originalAnchor.startLine - 1),
+                0,
+                Math.max(0, originalAnchor.endLine - 1),
+                0,
+              ),
+            }
+          : {}),
+      },
+    );
+    return commentUri;
+  }
+
+  function getCommentDiffTarget(
+    target: ThreadNode | CommentNode | OpenCommentNode | vscode.CommentThread,
+  ): { thread: ReviewThread; comment: ReviewComment; pr: PRSummary } | undefined {
+    if (target instanceof ThreadNode) {
+      const comment = target.thread.comments.find((entry) => getReviewCommentVersion(entry))
+        ?? target.thread.comments[0];
+      return comment ? { thread: target.thread, comment, pr: target.fileNode.prNode.pr } : undefined;
+    }
+    if (target instanceof CommentNode) {
+      const comment = getReviewCommentVersion(target.comment)
+        ? target.comment
+        : target.threadNode.thread.comments.find((entry) => getReviewCommentVersion(entry))
+          ?? target.comment;
+      return {
+        thread: target.threadNode.thread,
+        comment,
+        pr: target.threadNode.fileNode.prNode.pr,
+      };
+    }
+    if (target instanceof OpenCommentNode) {
+      const comment = getReviewCommentVersion(target.comment)
+        ? target.comment
+        : target.thread.comments.find((entry) => getReviewCommentVersion(entry))
+          ?? target.comment;
+      return { thread: target.thread, comment, pr: target.pr };
+    }
+
+    const thread = commentsCtrl.getReviewThread(target);
+    const pr = selectedPRNode?.pr ?? currentBranchNode()?.pr;
+    const comment = thread?.comments.find((entry) => getReviewCommentVersion(entry))
+      ?? thread?.comments[0];
+    return thread && pr && comment ? { thread, comment, pr } : undefined;
   }
 
   async function openWorkspaceFile(
@@ -254,6 +378,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const target = selectedPRNode ?? currentBranchNode();
     void vscode.commands.executeCommand('setContext', 'githubReviewer.hasSelectedPR', Boolean(target));
     void vscode.commands.executeCommand('setContext', 'githubReviewer.selectedPRExpanded', Boolean(target?.expanded));
+  }
+
+  function updateCommentDiffContext(editor?: vscode.TextEditor): void {
+    const isCommentDiff = Boolean(
+      editor
+      && activeCommentDiff
+      && [activeCommentDiff.commentUri, activeCommentDiff.currentUri]
+        .some((uri) => uri.toString() === editor.document.uri.toString()),
+    );
+    void vscode.commands.executeCommand(
+      'setContext',
+      'githubReviewer.commentDiffActive',
+      isCommentDiff,
+    );
   }
 
   function getTargetPRNode(node?: PRNode): PRNode | undefined {
@@ -440,6 +578,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   void vscode.commands.executeCommand('setContext', 'githubReviewer.showResolved', false);
   void vscode.commands.executeCommand('setContext', 'githubReviewer.hasSelectedPR', false);
   void vscode.commands.executeCommand('setContext', 'githubReviewer.selectedPRExpanded', false);
+  void vscode.commands.executeCommand('setContext', 'githubReviewer.commentDiffActive', false);
 
   const showResolvedCommand = vscode.commands.registerCommand('githubReviewer.showResolved', () => {
     reviewProvider.showResolved = true;
@@ -459,6 +598,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         await syncComments();
         const pr = node instanceof OpenCommentNode ? node.pr : node.fileNode.prNode.pr;
+        let diffOpened = false;
+        try {
+          diffOpened = Boolean(await openCommentDiff(node));
+        } catch (error) {
+          logError('Failed to open default comment diff', error);
+        }
+        if (diffOpened) {
+          return;
+        }
+
         const editor = await openWorkspaceFile(node.thread.path, {
           anchor: getReviewThreadAnchor(node.thread),
           preserveFocus: false,
@@ -501,6 +650,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.env.openExternal(vscode.Uri.parse(url));
     },
   );
+
+  const toggleCommentDiffCommand = vscode.commands.registerCommand(
+    'githubReviewer.toggleCommentDiffView',
+    async () => {
+      if (!activeCommentDiff) {
+        return;
+      }
+
+      try {
+        await vscode.commands.executeCommand('toggle.diff.renderSideBySide');
+        activeCommentDiff.sideBySide = !activeCommentDiff.sideBySide;
+        commentsCtrl.showThread(
+          activeCommentDiff.threadId,
+          activeCommentDiff.sideBySide
+            ? activeCommentDiff.commentUri
+            : activeCommentDiff.currentUri,
+          { preferOriginal: activeCommentDiff.sideBySide },
+        );
+        if (!activeCommentDiff.sideBySide) {
+          try {
+            await vscode.commands.executeCommand('comments.openView');
+          } catch (error) {
+            logError('Failed to open the comments view for inline diff mode', error);
+          }
+        }
+      } catch (error) {
+        logError('Failed to toggle the comment diff layout', error);
+        const message = error instanceof Error ? error.message : 'Unable to toggle the comment diff layout.';
+        void vscode.window.showErrorMessage(message);
+      }
+    },
+  );
+
+  const activeEditorSubscription = vscode.window.onDidChangeActiveTextEditor((editor) => {
+    updateCommentDiffContext(editor);
+  });
 
   const expandPRCommand = vscode.commands.registerCommand(
     'githubReviewer.expandPullRequest',
@@ -655,6 +840,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     openThreadCommand,
     openFileCommand,
     openOriginalCommentCommand,
+    toggleCommentDiffCommand,
+    activeEditorSubscription,
     expandPRCommand,
     collapsePRCommand,
     showInTreeViewCommand,

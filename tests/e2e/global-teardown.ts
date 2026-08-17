@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { stopMockGitHub } from './stop-mock-github.js';
 import { stopVSCodeHost } from './vscode-host.js';
 
 export default async function globalTeardown() {
+  await stopMockGitHub();
   const statePath = path.resolve('.vscode-test/playwright-state.json');
   let state: { pid?: number; workspacePath?: string } = {};
   try {
