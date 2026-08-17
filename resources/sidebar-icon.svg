@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-label="Pull request review comment logo">
+  <path d="M74 78h364c34 0 62 28 62 62v218c0 34-28 62-62 62H244l-72 58v-58H74c-34 0-62-28-62-62V140c0-34 28-62 62-62z" stroke-width="18"/>
+  <g stroke-width="18">
+    <circle cx="176" cy="170" r="30"/>
+    <circle cx="176" cy="334" r="30"/>
+    <circle cx="320" cy="334" r="30"/>
+    <line x1="176" y1="200" x2="176" y2="304"/>
+    <path d="M320 304V218c0-27-22-48-49-48H206"/>
+    <path d="M232 144L206 170L232 196"/>
+  </g>
+</svg>
