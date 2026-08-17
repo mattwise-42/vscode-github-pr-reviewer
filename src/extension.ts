@@ -665,16 +665,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           activeCommentDiff.threadId,
           activeCommentDiff.sideBySide
             ? activeCommentDiff.commentUri
-            : activeCommentDiff.currentUri,
-          { preferOriginal: activeCommentDiff.sideBySide },
+            :             activeCommentDiff.currentUri,
+            { preferOriginal: activeCommentDiff.sideBySide },
         );
-        if (!activeCommentDiff.sideBySide) {
-          try {
-            await vscode.commands.executeCommand('comments.openView');
-          } catch (error) {
-            logError('Failed to open the comments view for inline diff mode', error);
-          }
-        }
       } catch (error) {
         logError('Failed to toggle the comment diff layout', error);
         const message = error instanceof Error ? error.message : 'Unable to toggle the comment diff layout.';

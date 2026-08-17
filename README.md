@@ -8,7 +8,7 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 - **Open Comments** view shows all comments from unresolved threads in a flat list
 - **Click a thread** to open a diff from the comment version to the current PR head and mark the original line
 - **Comment diff layout** can be toggled between side-by-side and inline from the diff editor's top-right action
-- **Inline diffs** keep the comment preview in the diff title and open the Comments view
+- **Inline diffs** keep the comment preview in the diff title
 - **Comment diffs** compare the code version where a comment was left with the current PR head
 - **Inline comment threads** appear in the gutter (skipped automatically if the GitHub Pull Requests extension is already showing them)
 - **Reply** from the inline thread's built-in reply box
