@@ -2,7 +2,7 @@
   "name": "github-pr-reviewer",
   "displayName": "GitHub PR Reviewer",
   "description": "ADO-style unresolved PR review thread sidebar for GitHub",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "publisher": "mattwise-42",
   "icon": "resources/icon.png",
   "repository": {
