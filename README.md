@@ -39,10 +39,10 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 
    You can also install it from the VS Code UI: **Extensions -> ... -> Install from VSIX...**
 
-With the [GitHub CLI](https://cli.github.com/) on macOS or Linux, download and install the latest release with one command:
+With `curl` on macOS or Linux, download and install the latest release with one command:
 
 ```bash
-tmpdir="$(mktemp -d)" && gh release download --repo mattwise-42/vscode-github-pr-reviewer --pattern 'github-pr-reviewer-*.vsix' --dir "$tmpdir" && code --install-extension "$tmpdir"/github-pr-reviewer-*.vsix --force && rm -rf "$tmpdir"
+tmpdir="$(mktemp -d)" && trap 'rm -rf "$tmpdir"' EXIT && version="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/mattwise-42/vscode-github-pr-reviewer/releases/latest | sed 's#.*/tag/v##')" && curl -fL "https://github.com/mattwise-42/vscode-github-pr-reviewer/releases/download/v${version}/github-pr-reviewer-${version}.vsix" -o "$tmpdir/github-pr-reviewer-${version}.vsix" && code --install-extension "$tmpdir/github-pr-reviewer-${version}.vsix" --force
 ```
 
 ## Build and install a VSIX locally
