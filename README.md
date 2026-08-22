@@ -29,21 +29,15 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 
 ## Install the latest release from GitHub
 
-1. Open the [latest GitHub release](https://github.com/mattwise-42/vscode-github-pr-reviewer/releases/latest).
-2. Under **Assets**, download the file named `github-pr-reviewer-<version>.vsix`.
-3. Install the downloaded file in VS Code:
-
-   ```bash
-   code --install-extension /path/to/github-pr-reviewer-<version>.vsix --force
-   ```
-
-   You can also install it from the VS Code UI: **Extensions -> ... -> Install from VSIX...**
-
-With `curl` on macOS or Linux, download and install the latest release with one command:
+On macOS or Linux, make sure the VS Code CLI (`code`) and `curl` are available in your `PATH`, then run:
 
 ```bash
-tmpdir="$(mktemp -d)" && trap 'rm -rf "$tmpdir"' EXIT && version="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/mattwise-42/vscode-github-pr-reviewer/releases/latest | sed 's#.*/tag/v##')" && curl -fL "https://github.com/mattwise-42/vscode-github-pr-reviewer/releases/download/v${version}/github-pr-reviewer-${version}.vsix" -o "$tmpdir/github-pr-reviewer-${version}.vsix" && code --install-extension "$tmpdir/github-pr-reviewer-${version}.vsix" --force
+curl -fsSL https://raw.githubusercontent.com/mattwise-42/vscode-github-pr-reviewer/main/install-latest.sh | bash
 ```
+
+The installer finds the latest [GitHub release](https://github.com/mattwise-42/vscode-github-pr-reviewer/releases/latest), downloads its VSIX to a temporary directory, installs it, and removes the temporary file.
+
+To install a downloaded VSIX manually, use the VS Code UI: **Extensions -> ... -> Install from VSIX...**
 
 ## Build and install a VSIX locally
 
