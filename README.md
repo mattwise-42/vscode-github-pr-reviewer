@@ -27,20 +27,32 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 - A workspace open at the root of a git repo with `origin` pointing to github.com
 - An open PR for the current branch
 
-## Install from VSIX
+## Install the latest release from GitHub
+
+1. Open the [latest GitHub release](https://github.com/mattwise-42/vscode-github-pr-reviewer/releases/latest).
+2. Under **Assets**, download the file named `github-pr-reviewer-<version>.vsix`.
+3. Install the downloaded file in VS Code:
+
+   ```bash
+   code --install-extension /path/to/github-pr-reviewer-<version>.vsix --force
+   ```
+
+   You can also install it from the VS Code UI: **Extensions -> ... -> Install from VSIX...**
+
+## Build and install a VSIX locally
 
 ```bash
 # 1. Build the VSIX package
 cd /path/to/GitHubReviewer
 npm install
 npm run package
-# → produces github-pr-reviewer-0.0.1.vsix
+# -> produces github-pr-reviewer-<version>.vsix
 
 # 2. Install it in VS Code
-code --install-extension github-pr-reviewer-0.0.1.vsix
+code --install-extension github-pr-reviewer-<version>.vsix
 ```
 
-Or install via the VS Code UI: **Extensions → … → Install from VSIX…**
+Or install the local file from the VS Code UI: **Extensions -> ... -> Install from VSIX...**
 
 ## Install for development (F5)
 
