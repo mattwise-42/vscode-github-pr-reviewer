@@ -50,6 +50,11 @@
         "category": "GitHub PR Reviewer"
       },
       {
+        "command": "githubReviewer.switchGitHubAccount",
+        "title": "Switch GitHub Account",
+        "category": "GitHub PR Reviewer"
+      },
+      {
         "command": "githubReviewer.showInTreeView",
         "title": "Show in GitHub Reviewer",
         "icon": "$(list-tree)",

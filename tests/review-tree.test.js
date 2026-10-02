@@ -263,6 +263,40 @@ test('ReviewTreeProvider lazily loads PR files and preserves loaded data across 
   assert.ok(refreshedTree[1] instanceof FileNode);
 });
 
+test('ReviewTreeProvider keeps threads for files outside the diff in the PR tree and Open Comments', async () => {
+  const vscodeMock = createVscodeMock('/workspace-root');
+  const { FileNode, OpenCommentsProvider, ReviewTreeProvider } = loadReviewTreeModule(vscodeMock);
+  const provider = new ReviewTreeProvider();
+  const changedThread = createThread({ id: 'thread-changed', path: 'changed.ts' });
+  const commentOnlyThread = createThread({ id: 'thread-comment-only', path: 'comment-only.ts' });
+
+  provider.setLoader(async () => ({
+    files: [createFile({ filename: 'changed.ts' })],
+    threads: [changedThread, commentOnlyThread],
+  }));
+  provider.updatePRs([createPR()]);
+
+  const [prNode] = await provider.getChildren();
+  const fileNodes = await provider.getChildren(prNode);
+  assert.deepEqual(fileNodes.map((node) => node.file.filename), ['changed.ts', 'comment-only.ts']);
+
+  const commentOnlyFile = provider.findFileNode('comment-only.ts');
+  assert.ok(commentOnlyFile instanceof FileNode);
+  assert.equal(commentOnlyFile.file.status, 'unchanged');
+  assert.equal(commentOnlyFile.file.additions, 0);
+  assert.equal(commentOnlyFile.file.deletions, 0);
+  assert.equal(commentOnlyFile.file.changes, 0);
+  assert.deepEqual(commentOnlyFile.threads.map((thread) => thread.id), ['thread-comment-only']);
+  assert.equal(provider.getTreeItem(commentOnlyFile).description, 'comment-only');
+
+  const openComments = new OpenCommentsProvider();
+  openComments.update(prNode.fileNodes.flatMap((fileNode) =>
+    fileNode.threads.map((thread) => ({ pr: prNode.pr, thread })),
+  ));
+  const openCommentNodes = await openComments.getChildren();
+  assert.ok(openCommentNodes.some((node) => node.thread.id === 'thread-comment-only'));
+});
+
 test('ReviewTreeProvider builds file and thread items, parents, navigation ordering, and badge counts', async () => {
   const vscodeMock = createVscodeMock('/workspace-root');
   const { CommentNode, FileNode, PRNode, ReviewTreeProvider, ThreadNode } = loadReviewTreeModule(vscodeMock);

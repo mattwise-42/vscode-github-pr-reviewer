@@ -8,6 +8,7 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 
 - **Sidebar panel** in the SCM view lists all unresolved review threads for the current branch's open PR, grouped by folder and file
 - **Open Comments** view shows all comments from unresolved threads in a flat list
+- Review threads remain visible in both views when their file is no longer in the PR diff, marked as **comment-only**
 - **Click a thread** to open a diff from the comment version to the current PR head and mark the original line
 - **Comment diff layout** can be toggled between side-by-side and inline from the diff editor's top-right action
 - **Inline diffs** keep the comment preview in the diff title
@@ -91,6 +92,8 @@ The end-to-end suite launches an isolated VS Code Extension Development Host and
 5. Use the inline comment UI to **reply** or click **✓** to **resolve**
 6. Use **Toggle Inline/Side-by-Side Diff** in the diff editor's top-right actions to change the layout
 7. Hit the **↺ refresh** button in the panel header to reload (or switch branches to auto-reload)
+
+To switch accounts or reauthorize GitHub access, run **GitHub PR Reviewer: Switch GitHub Account** from the Command Palette.
 
 If you're not signed into GitHub, the first **Refresh** will prompt you to authenticate via VS Code's built-in GitHub auth flow.
 
