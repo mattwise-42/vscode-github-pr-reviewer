@@ -172,7 +172,9 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
         vscode.TreeItemCollapsibleState.Expanded,
       );
       item.resourceUri = fileUri;
-      item.description = `+${element.file.additions} -${element.file.deletions}`;
+      item.description = element.file.status === 'unchanged'
+        ? 'comment-only'
+        : `+${element.file.additions} -${element.file.deletions}`;
       const unresolvedCount = element.threads.filter((thread) => !thread.isResolved).length;
       item.tooltip = unresolvedCount > 0
         ? `${element.file.filename} — ${unresolvedCount} unresolved`
@@ -392,7 +394,17 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
     if (!prNode.loading) {
       prNode.loading = this.loadPRData(prNode.pr)
         .then(({ files, threads }) => {
-          prNode.fileNodes = files
+          const pathsInDiff = new Set(files.map((file) => file.filename));
+          const commentOnlyFiles: PRFile[] = [...new Set(threads.map((thread) => thread.path))]
+            .filter((path) => !pathsInDiff.has(path))
+            .map((filename) => ({
+              filename,
+              status: 'unchanged',
+              additions: 0,
+              deletions: 0,
+              changes: 0,
+            }));
+          prNode.fileNodes = [...files, ...commentOnlyFiles]
             .sort((a, b) => a.filename.localeCompare(b.filename))
             .map((file) => new FileNode(
               file,

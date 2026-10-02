@@ -62,7 +62,12 @@ interface ActiveCommentDiff {
 }
 
 async function getGitHubSession(
-  options: { silent?: boolean; createIfNone?: boolean },
+  options: {
+    silent?: boolean;
+    createIfNone?: boolean;
+    clearSessionPreference?: boolean;
+    forceNewSession?: boolean;
+  },
 ): Promise<vscode.AuthenticationSession | undefined> {
   const testToken = process.env.GITHUB_REVIEWER_TEST_TOKEN;
   if (testToken) {
@@ -78,9 +83,16 @@ async function getGitHubSession(
   }
 
   try {
-    return await vscode.authentication.getSession('github', ['repo'], options);
-  } catch {
-    return undefined;
+    return await vscode.authentication.getSession(
+      'github',
+      ['read:user', 'user:email', 'repo'],
+      options,
+    );
+  } catch (error) {
+    if (options.silent) {
+      return undefined;
+    }
+    throw error;
   }
 }
 
@@ -102,7 +114,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     log(`Using development workspace fallback: ${process.env.GITHUB_REVIEWER_DEV_WORKSPACE}`);
   }
   let session = await getGitHubSession({ silent: true });
-  log(session ? 'GitHub session available' : 'No GitHub session available');
+  log(
+    session
+      ? `GitHub session available for ${session.account.label} (scopes: ${session.scopes.join(', ')})`
+      : 'No GitHub session available',
+  );
   let currentRepo: GitHubRepo | null = null;
   let currentBranch: string | null = null;
   let navIndex = 0;
@@ -529,7 +545,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     log(`Fetching open pull requests for ${repo.owner}/${repo.repo}`);
-    const prs = await fetchOpenPRs(session.accessToken, repo);
+    let prs: PRSummary[];
+    try {
+      prs = await fetchOpenPRs(session.accessToken, repo);
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== 'GitHub API error: 404') {
+        throw error;
+      }
+
+      const message =
+        `GitHub returned 404 while loading pull requests for ${repo.owner}/${repo.repo}. `
+        + 'The repository may be private, or this account may lack access or Truveta SSO authorization.';
+      log(message);
+      const action = await vscode.window.showErrorMessage(message, 'Switch GitHub Account');
+      if (action === 'Switch GitHub Account') {
+        await vscode.commands.executeCommand('githubReviewer.switchGitHubAccount');
+      }
+      return;
+    }
+
     reviewProvider.updatePRs(prs);
     log(`Received ${prs.length} open pull request(s)`);
 
@@ -574,6 +608,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showErrorMessage(message);
     }
   });
+  const switchGitHubAccountCommand = vscode.commands.registerCommand(
+    'githubReviewer.switchGitHubAccount',
+    async () => {
+      try {
+        const nextSession = await getGitHubSession({
+          clearSessionPreference: true,
+          forceNewSession: true,
+        });
+        if (!nextSession) {
+          return;
+        }
+
+        log(`Selected GitHub account ${nextSession.account.label} (scopes: ${nextSession.scopes.join(', ')})`);
+        session = nextSession;
+        selectedPRNode = undefined;
+        reviewProvider.updatePRs([]);
+        await loadPRs();
+      } catch (error) {
+        logError('Switching GitHub account failed', error);
+        const message = error instanceof Error
+          ? error.message
+          : 'Unable to switch GitHub account.';
+        void vscode.window.showErrorMessage(message);
+      }
+    },
+  );
 
   void vscode.commands.executeCommand('setContext', 'githubReviewer.showResolved', false);
   void vscode.commands.executeCommand('setContext', 'githubReviewer.hasSelectedPR', false);
@@ -828,6 +888,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviewTreeSubscription,
     treeSelectionSubscription,
     refreshCommand,
+    switchGitHubAccountCommand,
     showResolvedCommand,
     hideResolvedCommand,
     openThreadCommand,
