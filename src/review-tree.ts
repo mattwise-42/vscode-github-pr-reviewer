@@ -181,8 +181,10 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
         : element.file.filename;
       item.contextValue = 'file';
       item.command = {
-        command: 'githubReviewer.openFile',
-        title: 'Open file',
+        command: element.file.status === 'unchanged'
+          ? 'githubReviewer.openFile'
+          : 'githubReviewer.openFileDiff',
+        title: element.file.status === 'unchanged' ? 'Open file' : 'Open changes',
         arguments: [element],
       };
       return item;

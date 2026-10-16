@@ -23,8 +23,10 @@ if (!mockBranch) {
 
 const pr42CommentCommit = '1111111111111111111111111111111111111111';
 const pr42HeadCommit = '2222222222222222222222222222222222222222';
+const pr42BaseCommit = '0000000000000000000000000000000000000000';
 const pr43CommentCommit = '3333333333333333333333333333333333333333';
 const pr43HeadCommit = '4444444444444444444444444444444444444444';
+const pr43BaseCommit = '5555555555555555555555555555555555555555';
 
 const prs = [
   {
@@ -33,7 +35,7 @@ const prs = [
     title: 'Fixture PR',
     draft: false,
     head: { ref: mockBranch, sha: pr42HeadCommit },
-    base: { ref: 'main' },
+    base: { ref: 'main', sha: pr42BaseCommit },
   },
   {
     number: 43,
@@ -41,7 +43,7 @@ const prs = [
     title: 'Second Fixture PR',
     draft: false,
     head: { ref: 'feature/second', sha: pr43HeadCommit },
-    base: { ref: 'main' },
+    base: { ref: 'main', sha: pr43BaseCommit },
   },
 ];
 
@@ -272,8 +274,10 @@ function threadForPullRequest(number) {
 }
 
 const fileContentsByRef = new Map([
+  [pr42BaseCommit, 'export const fixture = "base version";\nexport const reviewLine = true;\n'],
   [pr42CommentCommit, 'export const fixture = "comment version";\nexport const reviewLine = true;\n'],
   [pr42HeadCommit, 'export const fixture = "current version";\nexport const reviewLine = false;\n'],
+  [pr43BaseCommit, 'export const fixture = "second base version";\nexport const reviewLine = true;\n'],
   [pr43CommentCommit, 'export const fixture = "second comment version";\nexport const reviewLine = true;\n'],
   [pr43HeadCommit, 'export const fixture = "second current version";\nexport const reviewLine = false;\n'],
 ]);

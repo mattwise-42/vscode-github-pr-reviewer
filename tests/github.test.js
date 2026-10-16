@@ -94,7 +94,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
           title: 'Thread sidebar',
           draft: false,
           head: { ref: 'feature/thread-sidebar', sha: 'head-sha-42' },
-          base: { ref: 'main' },
+          base: { ref: 'main', sha: 'base-sha-42' },
         },
         {
           number: 43,
@@ -102,7 +102,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
           title: 'Docs polish',
           draft: true,
           head: { ref: 'docs/polish', sha: 'head-sha-43' },
-          base: { ref: 'main' },
+          base: { ref: 'main', sha: 'base-sha-43' },
         },
       ],
     });
@@ -122,6 +122,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
         headRefName: 'feature/thread-sidebar',
         headSha: 'head-sha-42',
         baseRefName: 'main',
+        baseSha: 'base-sha-42',
         isDraft: false,
       },
       {
@@ -131,6 +132,7 @@ test('fetchOpenPRs loads the first page of open pull requests and maps branch me
         headRefName: 'docs/polish',
         headSha: 'head-sha-43',
         baseRefName: 'main',
+        baseSha: 'base-sha-43',
         isDraft: true,
       },
     ]);
@@ -148,7 +150,7 @@ test('fetchOpenPRs includes the current head commit for comment diffs', async ()
       title: 'Thread sidebar',
       draft: false,
       head: { ref: 'feature/thread-sidebar', sha: 'head-sha-42' },
-      base: { ref: 'main' },
+      base: { ref: 'main', sha: 'base-sha-42' },
     }],
   }));
 
@@ -159,6 +161,7 @@ test('fetchOpenPRs includes the current head commit for comment diffs', async ()
     );
 
     assert.equal(pr.headSha, 'head-sha-42');
+    assert.equal(pr.baseSha, 'base-sha-42');
   } finally {
     restoreFetch();
   }
@@ -196,7 +199,7 @@ test('GitHub API requests use the configured API base URL', async () => {
           title: 'Thread sidebar',
           draft: false,
           head: { ref: 'feature/thread-sidebar', sha: 'head-sha-42' },
-          base: { ref: 'main' },
+          base: { ref: 'main', sha: 'base-sha-42' },
         }],
       });
     }

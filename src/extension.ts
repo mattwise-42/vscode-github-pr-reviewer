@@ -219,6 +219,45 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return uri;
   }
 
+  function createRemoteFileUri(relPath: string, ref: string, content: string): vscode.Uri {
+    const uri = remoteFileUri(relPath, ref);
+    remoteFileContents.set(uri.toString(), content);
+    return uri;
+  }
+
+  async function openFileDiff(node: FileNode): Promise<void> {
+    if (!session || !currentRepo) {
+      throw new Error('Sign in to GitHub to open the pull request file diff.');
+    }
+
+    const { file } = node;
+    const { baseSha, headSha } = node.prNode.pr;
+    const beforePath = file.previousFilename ?? file.filename;
+    const beforeUriPromise = file.status === 'added'
+      ? Promise.resolve(createRemoteFileUri(beforePath, baseSha, ''))
+      : fetchRemoteFileUri(beforePath, baseSha);
+    const afterUriPromise = file.status === 'removed'
+      ? Promise.resolve(createRemoteFileUri(file.filename, headSha, ''))
+      : fetchRemoteFileUri(file.filename, headSha);
+    const [beforeUri, afterUri] = await Promise.all([beforeUriPromise, afterUriPromise]);
+
+    if (!beforeUri || !afterUri) {
+      throw new Error(`Unable to load both versions of ${file.filename} from GitHub.`);
+    }
+
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      beforeUri,
+      afterUri,
+      `${file.filename}: ${baseSha.slice(0, 7)} -> ${headSha.slice(0, 7)}`,
+      {
+        preserveFocus: false,
+        preview: false,
+        renderSideBySide: true,
+      },
+    );
+  }
+
   async function openCommentDiff(
     target: ThreadNode | CommentNode | OpenCommentNode | vscode.CommentThread,
   ): Promise<vscode.Uri | undefined> {
@@ -587,7 +626,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await reviewProvider.loadPR(matchingPR);
         await treeView.reveal(matchingPR, { expand: true, focus: false, select: false });
       } catch (error) {
-        logError(`Failed to load pull request #${matchingPR.number}`, error);
+        logError(`Failed to load pull request #${matchingPR.pr.number}`, error);
       }
       reviewProvider.setBadge(treeView);
       await syncComments();
@@ -695,6 +734,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           ],
         });
       } catch {}
+    },
+  );
+
+  const openFileDiffCommand = vscode.commands.registerCommand(
+    'githubReviewer.openFileDiff',
+    async (node: FileNode) => {
+      try {
+        await openFileDiff(node);
+      } catch (error) {
+        logError(`Failed to open diff for ${node.file.filename}`, error);
+        const message = error instanceof Error
+          ? error.message
+          : `Unable to open diff for ${node.file.filename}.`;
+        void vscode.window.showErrorMessage(message);
+      }
     },
   );
 
@@ -893,6 +947,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     hideResolvedCommand,
     openThreadCommand,
     openFileCommand,
+    openFileDiffCommand,
     openOriginalCommentCommand,
     toggleCommentDiffCommand,
     activeEditorSubscription,
