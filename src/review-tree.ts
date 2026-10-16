@@ -160,7 +160,7 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
         element.pr.isDraft ? 'git-pull-request-draft' : 'git-pull-request',
       );
       item.contextValue = 'pr';
-      item.id = `pr-${element.pr.number}-${element.expanded ? 'expanded' : 'collapsed'}`;
+      item.id = `pr-${element.pr.number}`;
       return item;
     }
 

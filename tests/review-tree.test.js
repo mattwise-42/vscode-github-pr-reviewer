@@ -204,12 +204,12 @@ test('ReviewTreeProvider lazily loads PR files and preserves loaded data across 
   assert.equal(prItem.collapsibleState, 1);
   assert.equal(prItem.iconPath.id, 'git-pull-request');
   assert.equal(prItem.contextValue, 'pr');
-  assert.equal(prItem.id, 'pr-42-collapsed');
+  assert.equal(prItem.id, 'pr-42');
 
   provider.setPRExpanded(rootNodes[0], true);
   const expandedPrItem = provider.getTreeItem(rootNodes[0]);
   assert.equal(expandedPrItem.collapsibleState, 2);
-  assert.equal(expandedPrItem.id, 'pr-42-expanded');
+  assert.equal(expandedPrItem.id, prItem.id);
 
   const draftItem = provider.getTreeItem(rootNodes[1]);
   assert.equal(draftItem.iconPath.id, 'git-pull-request-draft');
