@@ -47,6 +47,7 @@ export interface PRSummary {
   headRefName: string;
   headSha: string;
   baseRefName: string;
+  baseSha: string;
   isDraft: boolean;
 }
 
@@ -154,6 +155,7 @@ interface RestOpenPullRequest extends RestPullRequest {
   };
   base: {
     ref: string;
+    sha: string;
   };
 }
 
@@ -603,6 +605,7 @@ export async function fetchOpenPRs(token: string, repo: GitHubRepo): Promise<PRS
     headRefName: pr.head.ref,
     headSha: pr.head.sha,
     baseRefName: pr.base.ref,
+    baseSha: pr.base.sha,
     isDraft: pr.draft,
   }));
 }

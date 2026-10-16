@@ -9,6 +9,7 @@ ADO-style unresolved PR review thread sidebar for VS Code. See every open review
 - **Sidebar panel** in the SCM view lists all unresolved review threads for the current branch's open PR, grouped by folder and file
 - **Open Comments** view shows all comments from unresolved threads in a flat list
 - Review threads remain visible in both views when their file is no longer in the PR diff, marked as **comment-only**
+- **Click a changed file** in the PR tree to compare the exact PR base commit with the head commit side by side
 - **Click a thread** to open a diff from the comment version to the current PR head and mark the original line
 - **Comment diff layout** can be toggled between side-by-side and inline from the diff editor's top-right action
 - **Inline diffs** keep the comment preview in the diff title

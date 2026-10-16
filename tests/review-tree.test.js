@@ -154,7 +154,9 @@ function createPR(overrides = {}) {
     nodeId: overrides.nodeId ?? 'PR_node_42',
     title: overrides.title ?? 'Sidebar tree',
     headRefName: overrides.headRefName ?? 'feature/sidebar-tree',
+    headSha: overrides.headSha ?? 'head-sha',
     baseRefName: overrides.baseRefName ?? 'main',
+    baseSha: overrides.baseSha ?? 'base-sha',
     isDraft: overrides.isDraft ?? false,
   };
 }
@@ -202,12 +204,12 @@ test('ReviewTreeProvider lazily loads PR files and preserves loaded data across 
   assert.equal(prItem.collapsibleState, 1);
   assert.equal(prItem.iconPath.id, 'git-pull-request');
   assert.equal(prItem.contextValue, 'pr');
-  assert.equal(prItem.id, 'pr-42-collapsed');
+  assert.equal(prItem.id, 'pr-42');
 
   provider.setPRExpanded(rootNodes[0], true);
   const expandedPrItem = provider.getTreeItem(rootNodes[0]);
   assert.equal(expandedPrItem.collapsibleState, 2);
-  assert.equal(expandedPrItem.id, 'pr-42-expanded');
+  assert.equal(expandedPrItem.id, prItem.id);
 
   const draftItem = provider.getTreeItem(rootNodes[1]);
   assert.equal(draftItem.iconPath.id, 'git-pull-request-draft');
@@ -287,7 +289,9 @@ test('ReviewTreeProvider keeps threads for files outside the diff in the PR tree
   assert.equal(commentOnlyFile.file.deletions, 0);
   assert.equal(commentOnlyFile.file.changes, 0);
   assert.deepEqual(commentOnlyFile.threads.map((thread) => thread.id), ['thread-comment-only']);
-  assert.equal(provider.getTreeItem(commentOnlyFile).description, 'comment-only');
+  const commentOnlyItem = provider.getTreeItem(commentOnlyFile);
+  assert.equal(commentOnlyItem.description, 'comment-only');
+  assert.equal(commentOnlyItem.command.command, 'githubReviewer.openFile');
 
   const openComments = new OpenCommentsProvider();
   openComments.update(prNode.fileNodes.flatMap((fileNode) =>
@@ -361,7 +365,7 @@ test('ReviewTreeProvider builds file and thread items, parents, navigation order
   assert.equal(fileItem.description, '+12 -3');
   assert.equal(fileItem.tooltip, 'src/alpha.ts — 2 unresolved');
   assert.equal(fileItem.contextValue, 'file');
-  assert.equal(fileItem.command.command, 'githubReviewer.openFile');
+  assert.equal(fileItem.command.command, 'githubReviewer.openFileDiff');
   assert.equal(fileItem.command.arguments[0], prNode.fileNodes[0]);
 
   const threadNodes = await provider.getChildren(prNode.fileNodes[0]);

@@ -160,7 +160,7 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
         element.pr.isDraft ? 'git-pull-request-draft' : 'git-pull-request',
       );
       item.contextValue = 'pr';
-      item.id = `pr-${element.pr.number}-${element.expanded ? 'expanded' : 'collapsed'}`;
+      item.id = `pr-${element.pr.number}`;
       return item;
     }
 
@@ -181,8 +181,10 @@ export class ReviewTreeProvider implements vscode.TreeDataProvider<ReviewTreeNod
         : element.file.filename;
       item.contextValue = 'file';
       item.command = {
-        command: 'githubReviewer.openFile',
-        title: 'Open file',
+        command: element.file.status === 'unchanged'
+          ? 'githubReviewer.openFile'
+          : 'githubReviewer.openFileDiff',
+        title: element.file.status === 'unchanged' ? 'Open file' : 'Open changes',
         arguments: [element],
       };
       return item;

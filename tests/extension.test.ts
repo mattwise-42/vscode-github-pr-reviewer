@@ -29,6 +29,12 @@ test('opens a review thread in the historical code diff by default', async () =>
   await expect(file).toBeVisible();
   await file.click();
 
+  await expect(page.getByText(/src\/fixture\.ts: 0000000 -> 2222222/)).toBeVisible();
+  const fileDiffLines = await page.locator('.monaco-editor .view-lines').allTextContents();
+  const fileDiffText = fileDiffLines.join('\n').replace(/\u00a0/g, ' ');
+  expect(fileDiffText).toContain('base version');
+  expect(fileDiffText).toContain('current version');
+
   const thread = page
     .getByRole('treeitem', { name: /test-user: Please review this fixture thread/ })
     .first();
